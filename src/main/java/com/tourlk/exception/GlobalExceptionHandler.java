@@ -2,6 +2,7 @@ package com.tourlk.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -54,6 +55,105 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBadRequest(BadRequestException ex,
                                                            HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidStatusTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidStatusTransition(InvalidStatusTransitionException ex,
+                                                                        HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(CapacityExceededException.class)
+    public ResponseEntity<ErrorResponse> handleCapacityExceeded(CapacityExceededException ex,
+                                                                  HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(RoomUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleRoomUnavailable(RoomUnavailableException ex,
+                                                                 HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(VehicleUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleVehicleUnavailable(VehicleUnavailableException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidDateRangeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidDateRange(InvalidDateRangeException ex,
+                                                                  HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(PaymentAmountMismatchException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentAmountMismatch(PaymentAmountMismatchException ex,
+                                                                       HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(PaymentRequiredException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentRequired(PaymentRequiredException ex,
+                                                                 HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(PaymentGatewayException.class)
+    public ResponseEntity<ErrorResponse> handlePaymentGateway(PaymentGatewayException ex,
+                                                                HttpServletRequest request) {
+        log.error("Stripe request failed at {}", request.getRequestURI(), ex);
+        return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ReviewNotEligibleException.class)
+    public ResponseEntity<ErrorResponse> handleReviewNotEligible(ReviewNotEligibleException ex,
+                                                                   HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DuplicateReviewException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateReview(DuplicateReviewException ex,
+                                                                 HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ReviewableMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleReviewableMismatch(ReviewableMismatchException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(TicketAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleTicketAccessDenied(TicketAccessDeniedException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(TicketClosedException.class)
+    public ResponseEntity<ErrorResponse> handleTicketClosed(TicketClosedException ex,
+                                                               HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DuplicateDestinationException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateDestination(DuplicateDestinationException ex,
+                                                                     HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DestinationInactiveException.class)
+    public ResponseEntity<ErrorResponse> handleDestinationInactive(DestinationInactiveException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleLockTimeout(PessimisticLockingFailureException ex,
+                                                             HttpServletRequest request) {
+        log.warn("Pessimistic lock could not be acquired at {}", request.getRequestURI());
+        return build(HttpStatus.CONFLICT,
+                "This resource is busy processing another request. Please try again.", request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)
