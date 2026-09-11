@@ -1,7 +1,7 @@
-server:
-  port: 8080
-
 spring:
+  profiles:
+    active: local
+
   application:
     name: tourlk
 
@@ -32,6 +32,9 @@ spring:
           starttls:
             enable: true
 
+server:
+  port: 8080
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -44,6 +47,12 @@ app:
     # Must be a Base64-encoded key of sufficient length (>= 256 bits) for HS256.
     secret: ${JWT_SECRET:c2VjcmV0LXBsYWNlaG9sZGVyLWNoYW5nZS1tZS1pbi1sb2NhbC1jb25maWctMjU2Yml0c30=}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24h
+
+stripe:
+  # Test-mode keys from dashboard.stripe.com — see frontend/README.md (Payments section)
+  # for how to get these and how to run the webhook locally. Never commit real values.
+  secret-key: ${STRIPE_SECRET_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 
 logging:
   level:
