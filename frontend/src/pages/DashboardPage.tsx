@@ -1,6 +1,8 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../auth/authStore'
+import RoleGate from '../auth/RoleGate'
 import Button from '../components/ui/Button'
+import Card from '../components/ui/Card'
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user)
@@ -23,6 +25,18 @@ export default function DashboardPage() {
       <Button variant="secondary" className="mt-6" onClick={handleLogout}>
         Logout
       </Button>
+
+      <RoleGate allowed={['ADMIN', 'GUIDE']}>
+        <Card className="mt-8 max-w-md">
+          <h2 className="font-semibold text-slate-900">Tour Packages</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Create and manage the tour packages you offer.
+          </p>
+          <Link to="/packages/mine" className="mt-3 inline-block text-sm font-medium text-blue-600 hover:underline">
+            Go to My Packages &rarr;
+          </Link>
+        </Card>
+      </RoleGate>
     </div>
   )
 }

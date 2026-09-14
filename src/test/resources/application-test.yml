@@ -1,0 +1,32 @@
+# Activated by @ActiveProfiles("test") on DB-backed slice / integration tests.
+# In-memory H2 standing in for SQL Server — schema is created from the JPA
+# entities on startup and dropped when the context closes.
+spring:
+  datasource:
+    url: jdbc:h2:mem:tourlk;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MSSQLServer
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    show-sql: false
+
+  mail:
+    host: localhost
+    port: 3025
+
+# Deterministic JWT settings for auth/security tests.
+app:
+  jwt:
+    secret: c2VjcmV0LXBsYWNlaG9sZGVyLWNoYW5nZS1tZS1pbi1sb2NhbC1jb25maWctMjU2Yml0c30=
+    expiration-ms: 3600000
+
+stripe:
+  secret-key: sk_test_dummy
+  webhook-secret: whsec_test_dummy

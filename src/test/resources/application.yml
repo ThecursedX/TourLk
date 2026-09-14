@@ -1,0 +1,24 @@
+# Test configuration. Kept deliberately minimal and self-contained so the
+# unit / web-layer tests never touch a real database, mail server or Stripe.
+# DB-backed slice tests add their own H2 datasource via a test profile.
+spring:
+  mail:
+    # Blank credentials => TicketMailService.mailConfigured == false (no mail is ever sent).
+    host: localhost
+    port: 3025
+    username: ""
+    password: ""
+
+app:
+  jwt:
+    # Base64-encoded key, >= 256 bits, for HS256 (same placeholder as the app default).
+    secret: c2VjcmV0LXBsYWNlaG9sZGVyLWNoYW5nZS1tZS1pbi1sb2NhbC1jb25maWctMjU2Yml0c30=
+    expiration-ms: 3600000
+
+stripe:
+  secret-key: sk_test_dummy
+  webhook-secret: whsec_test_dummy
+
+logging:
+  level:
+    org.hibernate.SQL: warn

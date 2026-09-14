@@ -27,9 +27,10 @@ The app runs at `http://localhost:5173`. It expects the Spring Boot backend
 
 ## Environment variables
 
-| Variable              | Description                        | Default                        |
-|------------------------|-------------------------------------|---------------------------------|
-| `VITE_API_BASE_URL`    | Base URL for backend API calls      | `http://localhost:8080/api`     |
+| Variable                      | Description                        | Default                        |
+|--------------------------------|-------------------------------------|---------------------------------|
+| `VITE_API_BASE_URL`            | Base URL for backend API calls      | `http://localhost:8080/api`     |
+| `VITE_STRIPE_PUBLISHABLE_KEY`  | Stripe **test-mode** publishable key (starts with `pk_test_`) | none — see [Payments (Stripe) setup](#payments-stripe-setup) |
 
 Copy `.env.example` to `.env` and adjust as needed. `.env` is gitignored —
 never commit real values there.
@@ -74,3 +75,47 @@ Same "stay in your own folder" convention as the backend (see root
 Branch per module (`feature/<module-name>`), same as the backend. If you need
 to touch shared code (`src/api/axiosClient.ts`, `src/auth/`,
 `src/components/layout/`), call that out explicitly in your PR description.
+
+## Payments (Stripe) setup
+
+The Payment & Invoicing module uses **Stripe in test mode** — sandbox only,
+no real money moves, no real card details ever touch our server (Stripe.js
+collects and tokenizes those directly in the browser).
+
+### 1. Get your test API keys
+
+1. Sign up / log in at [dashboard.stripe.com](https://dashboard.stripe.com).
+2. Make sure you're in **Test mode** (toggle in the top-right of the dashboard).
+3. Go to **Developers → API keys**.
+4. Copy the two test-mode keys:
+   - **Publishable key** (starts with `pk_test_...`) → put this in
+     `frontend/.env` as `VITE_STRIPE_PUBLISHABLE_KEY`.
+   - **Secret key** (starts with `sk_test_...`) → put this in your backend
+     environment (or `application-local.yml`, same gitignored pattern as
+     `JWT_SECRET`/`MAIL_*`) as `STRIPE_SECRET_KEY`. **Never commit this or
+     put it in the frontend** — it's server-only.
+
+### 2. Test the webhook locally with the Stripe CLI
+
+The backend needs Stripe to call `POST /api/payments/webhook` when a payment
+succeeds or fails. Locally, your machine isn't reachable from the internet,
+so use the [Stripe CLI](https://docs.stripe.com/stripe-cli) to forward events:
+
+```bash
+stripe login
+stripe listen --forward-to localhost:8080/api/payments/webhook
+```
+
+This prints a webhook signing secret like `whsec_...` — put that in your
+backend environment as `STRIPE_WEBHOOK_SECRET`. Keep the `stripe listen`
+command running in a terminal while you test payments locally; it forwards
+real Stripe test-mode events to your local backend and re-signs them with
+that secret, which is what `PaymentController` verifies against before
+trusting anything in the webhook body.
+
+### 3. Test cards
+
+Use any of [Stripe's test card numbers](https://docs.stripe.com/testing) —
+`4242 4242 4242 4242`, any future expiry, any 3-digit CVC, any postal code —
+to simulate a successful payment on the Checkout page. Other numbers in that
+list simulate declines, requires-authentication flows, etc.
