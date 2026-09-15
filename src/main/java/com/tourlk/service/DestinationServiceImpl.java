@@ -29,9 +29,14 @@ public class DestinationServiceImpl implements DestinationService {
     public DestinationResponseDto createDestination(DestinationRequestDto request) {
         assertNameAvailable(request.getName(), null);
 
+        // අලුත් ෆීල්ඩ්ස් ටික මෙතනට ඇතුළත් කර ඇත
         Destination destination = Destination.builder()
                 .name(request.getName().trim())
                 .region(request.getRegion())
+                .district(request.getDistrict())
+                .category(request.getCategory())
+                .bestTimeToVisit(request.getBestTimeToVisit())
+                .imageUrl(request.getImageUrl())
                 .description(request.getDescription())
                 .status(DestinationStatus.ACTIVE)
                 .build();
@@ -44,8 +49,13 @@ public class DestinationServiceImpl implements DestinationService {
         Destination destination = getEntity(id);
         assertNameAvailable(request.getName(), id);
 
+        // අලුත් ෆීල්ඩ්ස් ටික Update වෙන්න මෙතනටත් ඇතුළත් කර ඇත
         destination.setName(request.getName().trim());
         destination.setRegion(request.getRegion());
+        destination.setDistrict(request.getDistrict());
+        destination.setCategory(request.getCategory());
+        destination.setBestTimeToVisit(request.getBestTimeToVisit());
+        destination.setImageUrl(request.getImageUrl());
         destination.setDescription(request.getDescription());
 
         return toResponse(destinationRepository.save(destination), true);
@@ -54,9 +64,6 @@ public class DestinationServiceImpl implements DestinationService {
     @Override
     public DestinationResponseDto deactivateDestination(Long id) {
         Destination destination = getEntity(id);
-        // Idempotent-ish: deactivating an already-inactive destination is a no-op.
-        // Existing TourPackages/Accommodations keep their reference — only new
-        // ones are blocked from selecting it (see requireSelectableDestination).
         destination.setStatus(DestinationStatus.INACTIVE);
         return toResponse(destinationRepository.save(destination), true);
     }
@@ -89,7 +96,6 @@ public class DestinationServiceImpl implements DestinationService {
 
     @Override
     public List<DestinationResponseDto> searchByName(String query) {
-        // Public-facing: active destinations only.
         return destinationRepository.findByNameContainingIgnoreCase(query == null ? "" : query).stream()
                 .filter(d -> d.getStatus() == DestinationStatus.ACTIVE)
                 .map(d -> toResponse(d, false))
@@ -98,7 +104,6 @@ public class DestinationServiceImpl implements DestinationService {
 
     @Override
     public List<DestinationResponseDto> getByRegion(String region) {
-        // Public-facing: active destinations only.
         return destinationRepository.findByRegion(region).stream()
                 .filter(d -> d.getStatus() == DestinationStatus.ACTIVE)
                 .map(d -> toResponse(d, false))
@@ -133,10 +138,15 @@ public class DestinationServiceImpl implements DestinationService {
     }
 
     private DestinationResponseDto toResponse(Destination destination, boolean withCounts) {
+        // UI එකට යවනකොට අලුත් ඩේටා ටිකත් යවන්න මේ ටිකත් අප්ඩේට් කළා
         DestinationResponseDto.DestinationResponseDtoBuilder builder = DestinationResponseDto.builder()
                 .id(destination.getId())
                 .name(destination.getName())
                 .region(destination.getRegion())
+                .district(destination.getDistrict())
+                .category(destination.getCategory())
+                .bestTimeToVisit(destination.getBestTimeToVisit())
+                .imageUrl(destination.getImageUrl())
                 .description(destination.getDescription())
                 .status(destination.getStatus())
                 .createdAt(destination.getCreatedAt());
