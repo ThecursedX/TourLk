@@ -58,7 +58,6 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
 
         <Route path="/destinations" element={<DestinationListPage />} />
-        <Route path="/packages/new" element={<CreatePackagePage />} />
         <Route path="/packages" element={<PackageListPage />} />
         <Route path="/packages/:id" element={<PackageDetailPage />} />
         <Route path="/accommodations" element={<AccommodationListPage />} />
