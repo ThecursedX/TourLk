@@ -16,6 +16,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+/**
+ * A real place (city/region/landmark) tourists can browse, e.g. "Ella",
+ * "Sigiriya", "Galle Fort". Curated directly by ADMINs via
+ * {@code DestinationServiceImpl} — no submission/approval workflow.
+ * <p>
+ * {@link TourPackage} and {@link Accommodation} reference a Destination
+ * instead of a free-text string so browsing/filtering by destination is
+ * consistent and typo-free across the platform.
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,21 +41,9 @@ public class Destination extends AuditableEntity {
     @Column(nullable = false, unique = true, length = 150)
     private String name;
 
+    /** e.g. "Southern Province", "Central Highlands". */
     @Column(nullable = false, length = 150)
-    private String region; // Province එක සඳහා
-
-    @Column(length = 150)
-    private String district; // දිස්ත්‍රික්කය සඳහා
-
-    @Column(length = 100)
-    private String category; // වර්ගය (Beach, Historical, වගේ දේකට)
-
-    @Column(length = 150)
-    private String bestTimeToVisit; // යන්න හොඳම කාලය
-
-    @Lob
-    @Column
-    private String imageUrl; // පින්තූරයක URL එක සඳහා
+    private String region;
 
     @Lob
     @Column
