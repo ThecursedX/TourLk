@@ -27,7 +27,7 @@ export default function ReservationCard({ reservation, footer }: ReservationCard
           {reservation.numberOfRooms} room{reservation.numberOfRooms === 1 ? '' : 's'}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-col gap-2 pt-1">
         <Link
           to={`/accommodations/${reservation.room.accommodationId}`}
           className="text-sm font-medium text-blue-600 hover:underline"

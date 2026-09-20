@@ -171,4 +171,76 @@ class ReviewControllerTest {
     void mine_asAdmin_isForbidden() throws Exception {
         mvc.perform(get("/api/reviews/mine")).andExpect(status().isForbidden());
     }
+
+    // --- PUT/DELETE /api/reviews/{id}/reply : hasAnyRole('GUIDE','ADMIN') ---
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "GUIDE")
+    void reply_asGuide_returnsOk() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+        when(reviewService.replyToReview(eq(5L), any(), any())).thenReturn(sample());
+
+        mvc.perform(put("/api/reviews/5/reply").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reply\":\"Thanks for visiting!\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "GUIDE")
+    void reply_blankReply_isBadRequest() throws Exception {
+        mvc.perform(put("/api/reviews/5/reply").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reply\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(reviewService);
+    }
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "TOURIST")
+    void reply_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/reviews/5/reply").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reply\":\"Thanks!\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(reviewService);
+    }
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "GUIDE")
+    void removeReply_asGuide_returnsOk() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+        when(reviewService.removeGuideReply(eq(5L), any())).thenReturn(sample());
+
+        mvc.perform(delete("/api/reviews/5/reply")).andExpect(status().isOk());
+    }
+
+    // --- GET /api/reviews/admin, PUT /{id}/flag|unflag : hasRole('ADMIN') ---
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void adminList_asAdmin_returnsOk() throws Exception {
+        when(reviewService.getAllReviewsForAdmin(true)).thenReturn(List.of());
+
+        mvc.perform(get("/api/reviews/admin").param("flaggedOnly", "true")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "GUIDE")
+    void adminList_asGuide_isForbidden() throws Exception {
+        mvc.perform(get("/api/reviews/admin")).andExpect(status().isForbidden());
+        verifyNoInteractions(reviewService);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void flag_asAdmin_returnsOk() throws Exception {
+        when(reviewService.flagReview(5L)).thenReturn(sample());
+
+        mvc.perform(put("/api/reviews/5/flag")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void unflag_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/reviews/5/unflag")).andExpect(status().isForbidden());
+        verifyNoInteractions(reviewService);
+    }
 }

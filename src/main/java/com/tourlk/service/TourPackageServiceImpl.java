@@ -188,7 +188,9 @@ public class TourPackageServiceImpl implements TourPackageService {
         return DestinationResponseDto.builder()
                 .id(destination.getId())
                 .name(destination.getName())
-                .region(destination.getRegion())
+                .region(destination.resolveRegion())
+                .province(destination.resolveProvince())
+                .district(destination.getDistrict())
                 .status(destination.getStatus())
                 .build();
     }

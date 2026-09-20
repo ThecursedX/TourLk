@@ -2,6 +2,7 @@ package com.tourlk.controller;
 
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.enums.DestinationStatus;
+import com.tourlk.enums.Province;
 import com.tourlk.security.JwtFilter;
 import com.tourlk.service.DestinationService;
 import com.tourlk.support.MethodSecurityTestConfig;
@@ -37,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DestinationControllerTest {
 
     private static final String CREATE_BODY = """
-            {"name":"Ella","region":"Uva Province","description":"Tea country"}
+            {"name":"Ella","description":"Tea country","province":"UVA","district":"Badulla","category":"Nature"}
             """;
 
     @Autowired
@@ -95,6 +96,32 @@ class DestinationControllerTest {
         when(destinationService.getById(1L)).thenReturn(sample());
 
         mvc.perform(get("/api/destinations/1")).andExpect(status().isOk());
+    }
+
+    @Test
+    void categories_noAuthentication_returnsOk() throws Exception {
+        when(destinationService.getCategorySuggestions()).thenReturn(List.of("Beach"));
+
+        mvc.perform(get("/api/destinations/categories")).andExpect(status().isOk());
+    }
+
+    @Test
+    void browse_byProvince_returnsOk() throws Exception {
+        when(destinationService.getByProvince(Province.UVA)).thenReturn(List.of());
+
+        mvc.perform(get("/api/destinations").param("province", "UVA")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void create_missingProvince_isBadRequest() throws Exception {
+        String body = """
+                {"name":"Ella","district":"Badulla","category":"Nature"}
+                """;
+
+        mvc.perform(post("/api/destinations").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(destinationService);
     }
 
     @Test

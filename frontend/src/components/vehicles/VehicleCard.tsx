@@ -11,7 +11,7 @@ interface VehicleCardProps {
 
 export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3" attention={vehicle.status === 'PENDING_APPROVAL'}>
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">
           {vehicle.make} {vehicle.model}
@@ -28,7 +28,7 @@ export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
           <span className="font-normal text-slate-500"> / day</span>
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link to={`/vehicles/${vehicle.id}`} className="text-sm font-medium text-blue-600 hover:underline">
           View details
         </Link>

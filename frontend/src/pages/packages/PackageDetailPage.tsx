@@ -7,6 +7,7 @@ import BookNowForm from '../../components/bookings/BookNowForm'
 import Card from '../../components/ui/Card'
 import StatusBadge from '../../components/packages/StatusBadge'
 import ReviewList from '../../components/reviews/ReviewList'
+import { formatProvince } from '../../types/destination'
 import type { TourPackageResponseDto } from '../../types/tourPackage'
 
 export default function PackageDetailPage() {
@@ -50,7 +51,10 @@ export default function PackageDetailPage() {
         </div>
         <p className="text-slate-600">
           {tourPackage.destination.name}
-          <span className="text-slate-400"> · {tourPackage.destination.region}</span>
+          <span className="text-slate-400">
+            {' '}
+            · {tourPackage.destination.district}, {formatProvince(tourPackage.destination.province)}
+          </span>
         </p>
         <p className="whitespace-pre-line text-slate-700">{tourPackage.description}</p>
         <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-4">
@@ -93,7 +97,14 @@ export default function PackageDetailPage() {
         </Card>
       )}
 
-      <ReviewList reviewableType="TOUR_PACKAGE" reviewableId={tourPackage.id} />
+      <ReviewList
+        reviewableType="TOUR_PACKAGE"
+        reviewableId={tourPackage.id}
+        canReply={
+          isAuthenticated &&
+          (user?.role === 'ADMIN' || (user?.role === 'GUIDE' && user?.userId === tourPackage.createdById))
+        }
+      />
     </div>
   )
 }

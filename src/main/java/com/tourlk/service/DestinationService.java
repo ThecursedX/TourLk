@@ -3,6 +3,7 @@ package com.tourlk.service;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.entity.Destination;
+import com.tourlk.enums.Province;
 
 import java.util.List;
 
@@ -32,7 +33,15 @@ public interface DestinationService {
 
     List<DestinationResponseDto> searchByName(String query);
 
-    List<DestinationResponseDto> getByRegion(String region);
+    /** Public-facing: active destinations in one province. */
+    List<DestinationResponseDto> getByProvince(Province province);
+
+    /**
+     * Category suggestions for the admin form: a built-in starter list
+     * merged with every category already in use, sorted and de-duplicated
+     * case-insensitively.
+     */
+    List<String> getCategorySuggestions();
 
     /**
      * Resolves a destination that is valid to attach to a NEW or EDITED

@@ -24,3 +24,26 @@ export function getRatingSummary(type: ReviewableType, id: number) {
 export function getMyReviews() {
   return axiosClient.get<ReviewResponseDto[]>('/reviews/mine').then((res) => res.data)
 }
+
+export function replyToReview(id: number, reply: string) {
+  return axiosClient.put<ReviewResponseDto>(`/reviews/${id}/reply`, { reply }).then((res) => res.data)
+}
+
+export function removeGuideReply(id: number) {
+  return axiosClient.delete<ReviewResponseDto>(`/reviews/${id}/reply`).then((res) => res.data)
+}
+
+/** ADMIN moderation view. Omit flaggedOnly for everything. */
+export function getAllReviewsForAdmin(flaggedOnly?: boolean) {
+  return axiosClient
+    .get<ReviewResponseDto[]>('/reviews/admin', { params: flaggedOnly === undefined ? undefined : { flaggedOnly } })
+    .then((res) => res.data)
+}
+
+export function flagReview(id: number) {
+  return axiosClient.put<ReviewResponseDto>(`/reviews/${id}/flag`).then((res) => res.data)
+}
+
+export function unflagReview(id: number) {
+  return axiosClient.put<ReviewResponseDto>(`/reviews/${id}/unflag`).then((res) => res.data)
+}

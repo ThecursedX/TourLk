@@ -29,7 +29,7 @@ export default function BookingCard({ booking, footer }: BookingCardProps) {
       {booking.previousTravelDate && (
         <p className="text-xs text-slate-500">Originally booked for {booking.previousTravelDate}</p>
       )}
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link
           to={`/bookings/${booking.id}`}
           className="text-sm font-medium text-blue-600 hover:underline"

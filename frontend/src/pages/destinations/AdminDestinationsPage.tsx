@@ -9,7 +9,7 @@ import {
 import DestinationForm from '../../components/destinations/DestinationForm'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import type { DestinationRequestDto, DestinationResponseDto } from '../../types/destination'
+import { formatProvince, type DestinationRequestDto, type DestinationResponseDto } from '../../types/destination'
 
 export default function AdminDestinationsPage() {
   const [destinations, setDestinations] = useState<DestinationResponseDto[]>([])
@@ -99,7 +99,8 @@ export default function AdminDestinationsPage() {
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Region</th>
+                <th className="px-4 py-3">Province / District</th>
+                <th className="px-4 py-3">Category</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Packages</th>
                 <th className="px-4 py-3 text-right">Hotels</th>
@@ -110,12 +111,16 @@ export default function AdminDestinationsPage() {
               {destinations.map((destination) =>
                 editingId === destination.id ? (
                   <tr key={destination.id}>
-                    <td colSpan={6} className="bg-slate-50 px-4 py-4">
+                    <td colSpan={7} className="bg-slate-50 px-4 py-4">
                       <DestinationForm
                         initialValues={{
                           name: destination.name,
-                          region: destination.region,
                           description: destination.description ?? '',
+                          province: destination.province,
+                          district: destination.district,
+                          category: destination.category,
+                          bestTimeToVisit: destination.bestTimeToVisit ?? '',
+                          imageUrls: destination.imageUrls,
                         }}
                         onSubmit={(values) => handleUpdate(destination.id, values)}
                         onCancel={() => setEditingId(null)}
@@ -127,7 +132,10 @@ export default function AdminDestinationsPage() {
                 ) : (
                   <tr key={destination.id} className="text-slate-700">
                     <td className="px-4 py-3 font-medium text-slate-900">{destination.name}</td>
-                    <td className="px-4 py-3">{destination.region}</td>
+                    <td className="px-4 py-3">
+                      {formatProvince(destination.province)} / {destination.district}
+                    </td>
+                    <td className="px-4 py-3">{destination.category}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${

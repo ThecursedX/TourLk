@@ -42,8 +42,12 @@ export default function MyBookingsPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (bookingId: number) =>
-    reviews.some((r) => r.reviewableType === 'TOUR_PACKAGE' && r.sourceBookingId === bookingId)
+  const hasReview = (bookingId: number, tourPackageId: number) =>
+    reviews.some(
+      (r) =>
+        r.reviewableType === 'TOUR_PACKAGE' &&
+        (r.sourceBookingId === bookingId || r.reviewableId === tourPackageId),
+    )
 
   const handleCancel = async (id: number) => {
     setActionError(null)
@@ -135,7 +139,9 @@ export default function MyBookingsPage() {
                         Cancel
                       </Button>
                     )}
-                    {booking.status === 'COMPLETED' && !hasReview(booking.id) && reviewingId !== booking.id && (
+                    {booking.status === 'COMPLETED' &&
+                      !hasReview(booking.id, booking.tourPackage.id) &&
+                      reviewingId !== booking.id && (
                       <Button variant="secondary" disabled={disabled} onClick={() => setReviewingId(booking.id)}>
                         Leave a Review
                       </Button>

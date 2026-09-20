@@ -19,6 +19,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 /**
  * A tourist's review of a TourPackage, Accommodation or Vehicle, left
  * only once the {@code Booking}/{@code RoomReservation}/{@code
@@ -67,5 +69,21 @@ public class Review extends AuditableEntity {
 
     @Column(length = 1000)
     private String comment;
+
+    /**
+     * Moderation flag set by an ADMIN. A wrapper type with no NOT NULL
+     * constraint so {@code ddl-auto: update} can add the column to a table
+     * that already has rows; null (legacy rows) is treated as not flagged.
+     */
+    @Column(name = "flagged")
+    @Builder.Default
+    private Boolean flagged = false;
+
+    /** Public reply from the guide who owns the reviewed tour package. */
+    @Column(name = "guide_reply", length = 1000)
+    private String guideReply;
+
+    @Column(name = "guide_reply_at")
+    private LocalDateTime guideReplyAt;
 
 }

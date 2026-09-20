@@ -5,12 +5,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -154,6 +157,27 @@ public class GlobalExceptionHandler {
         log.warn("Pessimistic lock could not be acquired at {}", request.getRequestURI());
         return build(HttpStatus.CONFLICT,
                 "This resource is busy processing another request. Please try again.", request);
+    }
+
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ErrorResponse> handleDisabledAccount(DisabledException ex,
+                                                                 HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN,
+                "This account has been deactivated. Please contact support.", request);
+    }
+
+    /** Unparseable JSON, or a value that isn't a valid enum constant (e.g. an unknown province). */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex,
+                                                                HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "The request body is missing or contains an invalid value", request);
+    }
+
+    /** A query/path parameter of the wrong type, e.g. {@code ?province=nowhere}. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleParamTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                                   HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'", request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)

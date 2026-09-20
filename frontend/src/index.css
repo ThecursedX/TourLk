@@ -3,5 +3,75 @@
 @tailwind utilities;
 
 body {
-  @apply bg-white text-slate-900;
+  @apply bg-slate-50 text-slate-900 font-sans antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  @apply font-display;
+}
+
+/*
+ * Liquid glass buttons: a frosted, translucent surface (backdrop-blur lets
+ * whatever sits behind the button show through) with a glassy sheen that
+ * ripples through on hover/focus. Applied via the `.btn-glass` class,
+ * combined with a semi-transparent background color per variant.
+ */
+.btn-glass {
+  isolation: isolate;
+  backdrop-filter: blur(14px) saturate(180%);
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+}
+
+.btn-glass::before {
+  content: '';
+  position: absolute;
+  inset: -20% -40%;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.75) 47%,
+    rgba(255, 255, 255, 0.2) 53%,
+    transparent 70%
+  );
+  transform: translateX(-60%);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.btn-glass:hover::before,
+.btn-glass:focus-visible::before {
+  transform: translateX(60%);
+}
+
+.btn-glass:active {
+  transform: scale(0.98);
+}
+
+/* A frosted glass panel (header, sidebar) — blur only, no hover sheen. */
+.glass-panel {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/*
+ * Replace the browser's default focus ring (often a stray blue/orange
+ * outline that doesn't match the palette) and native autofill tint (a
+ * yellow/orange fill browsers apply to remembered form fields) so nothing
+ * off-palette ever shows through the UI.
+ */
+*:focus-visible {
+  outline: 2px solid #2454dd;
+  outline-offset: 2px;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #1e2b27;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  box-shadow: 0 0 0px 1000px #ffffff inset;
+  transition: background-color 9999s ease-in-out 0s;
 }

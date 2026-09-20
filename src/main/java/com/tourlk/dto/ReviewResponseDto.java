@@ -24,6 +24,9 @@ public class ReviewResponseDto {
     private String reviewerName;
     private int rating;
     private String comment;
+    private boolean flagged;
+    private String guideReply;
+    private LocalDateTime guideReplyAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

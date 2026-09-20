@@ -36,8 +36,12 @@ export default function MyReservationsPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (reservationId: number) =>
-    reviews.some((r) => r.reviewableType === 'ACCOMMODATION' && r.sourceBookingId === reservationId)
+  const hasReview = (reservationId: number, accommodationId: number) =>
+    reviews.some(
+      (r) =>
+        r.reviewableType === 'ACCOMMODATION' &&
+        (r.sourceBookingId === reservationId || r.reviewableId === accommodationId),
+    )
 
   const handleCancel = async (id: number) => {
     setActionError(null)
@@ -74,7 +78,7 @@ export default function MyReservationsPage() {
             reservation={reservation}
             footer={
               <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {reservation.status === 'PENDING' && (
                     <Link to={`/checkout/reservation/${reservation.id}`}>
                       <Button disabled={busyId === reservation.id}>Pay Now</Button>
@@ -90,7 +94,7 @@ export default function MyReservationsPage() {
                     </Button>
                   )}
                   {reservation.status === 'COMPLETED' &&
-                    !hasReview(reservation.id) &&
+                    !hasReview(reservation.id, reservation.room.accommodationId) &&
                     reviewingId !== reservation.id && (
                       <Button
                         variant="secondary"

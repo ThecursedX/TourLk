@@ -6,6 +6,9 @@ import StarRating from './StarRating'
 import type { ErrorResponse } from '../../types/auth'
 import type { ReviewResponseDto, ReviewableType } from '../../types/review'
 
+const MIN_LENGTH = 10
+const MAX_LENGTH = 500
+
 interface ReviewFormProps {
   reviewableType: ReviewableType
   reviewableId: number
@@ -32,11 +35,23 @@ export default function ReviewForm({
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const validate = (): string | null => {
+    if (rating < 1) return 'Please select a star rating'
+    const trimmed = comment.trim()
+    if (trimmed.length < MIN_LENGTH) return `Review must be at least ${MIN_LENGTH} characters`
+    if (trimmed.length > MAX_LENGTH) return `Review must be at most ${MAX_LENGTH} characters`
+    return null
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setFormError(null)
-    if (rating < 1) {
-      setFormError('Please select a star rating')
+    const validationError = validate()
+    if (validationError) {
+      setFormError(validationError)
+      return
+    }
+    if (!window.confirm('Submit this review? You can edit it later from My Reviews.')) {
       return
     }
 
@@ -47,7 +62,7 @@ export default function ReviewForm({
         reviewableId,
         sourceBookingId,
         rating,
-        comment: comment.trim() || undefined,
+        comment: comment.trim(),
       }
       const review = existingReviewId
         ? await updateReview(existingReviewId, request)
@@ -69,11 +84,15 @@ export default function ReviewForm({
       <StarRating value={rating} onChange={setRating} />
       <textarea
         rows={3}
-        placeholder="Share your experience (optional)"
+        placeholder="Share your experience (10-500 characters)"
         value={comment}
         onChange={(e) => setComment(e.target.value)}
+        maxLength={MAX_LENGTH}
         className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
+      <span className="text-xs text-slate-500">
+        {comment.trim().length}/{MAX_LENGTH}
+      </span>
       {formError && <p className="text-sm text-red-600">{formError}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting}>

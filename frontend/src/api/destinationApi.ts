@@ -5,7 +5,7 @@ import type {
   DestinationResponseDto,
 } from '../types/destination'
 
-/** Public — active destinations only. Optional `search` (name) or `region` filter. */
+/** Public — active destinations only. Optional `search` (name) or `province` filter. */
 export function browseDestinations(params?: DestinationBrowseParams) {
   return axiosClient
     .get<DestinationResponseDto[]>('/destinations', { params })
@@ -35,4 +35,9 @@ export function deactivateDestination(id: number) {
 
 export function reactivateDestination(id: number) {
   return axiosClient.put<DestinationResponseDto>(`/destinations/${id}/reactivate`).then((res) => res.data)
+}
+
+/** Existing category values across all destinations, for combobox suggestions. */
+export function getCategorySuggestions() {
+  return axiosClient.get<string[]>('/destinations/categories').then((res) => res.data)
 }

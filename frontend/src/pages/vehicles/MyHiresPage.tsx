@@ -36,8 +36,10 @@ export default function MyHiresPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (hireId: number) =>
-    reviews.some((r) => r.reviewableType === 'VEHICLE' && r.sourceBookingId === hireId)
+  const hasReview = (hireId: number, vehicleId: number) =>
+    reviews.some(
+      (r) => r.reviewableType === 'VEHICLE' && (r.sourceBookingId === hireId || r.reviewableId === vehicleId),
+    )
 
   const handleCancel = async (id: number) => {
     setActionError(null)
@@ -89,7 +91,9 @@ export default function MyHiresPage() {
                       Cancel
                     </Button>
                   )}
-                  {hire.status === 'COMPLETED' && !hasReview(hire.id) && reviewingId !== hire.id && (
+                  {hire.status === 'COMPLETED' &&
+                    !hasReview(hire.id, hire.vehicle.id) &&
+                    reviewingId !== hire.id && (
                     <Button
                       variant="secondary"
                       disabled={busyId === hire.id}

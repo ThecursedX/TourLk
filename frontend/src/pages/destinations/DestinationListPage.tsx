@@ -4,7 +4,7 @@ import { browseDestinations } from '../../api/destinationApi'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
-import type { DestinationResponseDto } from '../../types/destination'
+import { formatProvince, type DestinationResponseDto } from '../../types/destination'
 
 export default function DestinationListPage() {
   const [destinations, setDestinations] = useState<DestinationResponseDto[]>([])
@@ -70,14 +70,36 @@ export default function DestinationListPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {destinations.map((destination) => (
           <Card key={destination.id} className="flex flex-col gap-3">
+            <Link to={`/destinations/${destination.id}`}>
+              {destination.imageUrls.length > 0 && (
+                <img
+                  src={destination.imageUrls[0]}
+                  alt={destination.name}
+                  className="h-40 w-full rounded-md object-cover"
+                />
+              )}
+            </Link>
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">{destination.name}</h3>
-              <p className="text-sm text-slate-500">{destination.region}</p>
+              <Link to={`/destinations/${destination.id}`}>
+                <h3 className="text-lg font-semibold text-slate-900 hover:text-blue-700">{destination.name}</h3>
+              </Link>
+              <p className="text-sm text-slate-500">
+                {destination.district}, {formatProvince(destination.province)}
+              </p>
+              <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                {destination.category}
+              </span>
             </div>
             {destination.description && (
               <p className="line-clamp-3 text-sm text-slate-600">{destination.description}</p>
             )}
+            {destination.bestTimeToVisit && (
+              <p className="text-xs text-slate-500">Best time to visit: {destination.bestTimeToVisit}</p>
+            )}
             <div className="mt-auto flex gap-4 pt-1 text-sm font-medium text-blue-600">
+              <Link to={`/destinations/${destination.id}`} className="hover:underline">
+                View destination
+              </Link>
               <Link to="/packages" className="hover:underline">
                 Packages
               </Link>

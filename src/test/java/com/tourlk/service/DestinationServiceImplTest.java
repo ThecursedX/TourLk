@@ -6,6 +6,8 @@ import com.tourlk.entity.Destination;
 import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.DestinationStatus;
 import com.tourlk.enums.PackageStatus;
+import com.tourlk.enums.Province;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.DestinationInactiveException;
 import com.tourlk.exception.DuplicateDestinationException;
 import com.tourlk.exception.ResourceNotFoundException;
@@ -63,7 +65,8 @@ class DestinationServiceImplTest {
     }
 
     private DestinationRequestDto request() {
-        return new DestinationRequestDto("Ella", "Uva Province", "Nine Arch Bridge and tea country");
+        return new DestinationRequestDto("Ella", "Nine Arch Bridge and tea country",
+                Province.UVA, "Badulla", "Nature", "January to March", List.of());
     }
 
     private void expectSaveEchoed() {
@@ -88,6 +91,46 @@ class DestinationServiceImplTest {
 
             assertThat(result.getStatus()).isEqualTo(DestinationStatus.ACTIVE);
             assertThat(result.getName()).isEqualTo("Ella");
+        }
+
+        @Test
+        void createDestination_savesProvinceDistrictCategoryAndKeepsLegacyRegionInStep() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            expectSaveEchoed();
+            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+                    Province.UVA, "badulla", " Nature ", null,
+                    List.of(" https://example.com/a.jpg ", "", "http://example.com/b.jpg"));
+
+            DestinationResponseDto result = service.createDestination(request);
+
+            assertThat(result.getProvince()).isEqualTo(Province.UVA);
+            assertThat(result.getDistrict()).isEqualTo("Badulla");
+            assertThat(result.getRegion()).isEqualTo("Uva Province");
+            assertThat(result.getCategory()).isEqualTo("Nature");
+            assertThat(result.getImageUrls())
+                    .containsExactly("https://example.com/a.jpg", "http://example.com/b.jpg");
+        }
+
+        @Test
+        void createDestination_districtNotInProvince_throwsBadRequest() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+                    Province.UVA, "Colombo", "Nature", null, List.of());
+
+            assertThatThrownBy(() -> service.createDestination(request))
+                    .isInstanceOf(BadRequestException.class);
+            verify(destinationRepository, never()).save(any());
+        }
+
+        @Test
+        void createDestination_imageUrlNotHttp_throwsBadRequest() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+                    Province.UVA, "Badulla", "Nature", null, List.of("ftp://example.com/a.jpg"));
+
+            assertThatThrownBy(() -> service.createDestination(request))
+                    .isInstanceOf(BadRequestException.class);
+            verify(destinationRepository, never()).save(any());
         }
 
         @Test
@@ -204,6 +247,35 @@ class DestinationServiceImplTest {
 
             assertThat(result.getActivePackageCount()).isEqualTo(3L);
             assertThat(result.getActiveAccommodationCount()).isEqualTo(2L);
+        }
+
+        @Test
+        void getByProvince_matchesStoredProvinceAndLegacyRegion_activeOnly() {
+            Destination stored = destination(1L, DestinationStatus.ACTIVE);
+            stored.setProvince(Province.UVA);
+            // Legacy row: no province column value, only the old region text.
+            Destination legacy = destination(2L, DestinationStatus.ACTIVE);
+            Destination otherProvince = destination(3L, DestinationStatus.ACTIVE);
+            otherProvince.setProvince(Province.SOUTHERN);
+            otherProvince.setRegion("Southern Province");
+            Destination inactive = destination(4L, DestinationStatus.INACTIVE);
+            inactive.setProvince(Province.UVA);
+            when(destinationRepository.findAll()).thenReturn(List.of(stored, legacy, otherProvince, inactive));
+
+            List<DestinationResponseDto> result = service.getByProvince(Province.UVA);
+
+            assertThat(result).extracting(DestinationResponseDto::getId).containsExactly(1L, 2L);
+        }
+
+        @Test
+        void getCategorySuggestions_mergesStarterListAndUsedCategories_caseInsensitively() {
+            when(destinationRepository.findDistinctCategories()).thenReturn(List.of("beach", "Surfing", " "));
+
+            List<String> result = service.getCategorySuggestions();
+
+            assertThat(result).contains("Beach", "Surfing", "Wildlife");
+            assertThat(result).doesNotContain("beach", " ");
+            assertThat(result).doesNotHaveDuplicates();
         }
 
         @Test

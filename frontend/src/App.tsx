@@ -2,6 +2,9 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './auth/authStore'
 import ProtectedRoute from './auth/ProtectedRoute'
 import Layout from './components/layout/Layout'
+import AdminLayout from './components/layout/AdminLayout'
+import AccountLayout from './components/layout/AccountLayout'
+import HomePage from './pages/HomePage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
@@ -16,6 +19,7 @@ import MyBookingsPage from './pages/bookings/MyBookingsPage'
 import BookingDetailPage from './pages/bookings/BookingDetailPage'
 import AdminBookingsPage from './pages/bookings/AdminBookingsPage'
 import DestinationListPage from './pages/destinations/DestinationListPage'
+import DestinationDetailPage from './pages/destinations/DestinationDetailPage'
 import AdminDestinationsPage from './pages/destinations/AdminDestinationsPage'
 import AccommodationListPage from './pages/accommodations/AccommodationListPage'
 import AccommodationDetailPage from './pages/accommodations/AccommodationDetailPage'
@@ -43,10 +47,16 @@ import NewTicketPage from './pages/support/NewTicketPage'
 import TicketDetailPage from './pages/support/TicketDetailPage'
 import AdminTicketsPage from './pages/support/AdminTicketsPage'
 import AdminUnassignedTicketsPage from './pages/support/AdminUnassignedTicketsPage'
+import ProfilePage from './pages/profile/ProfilePage'
+import AdminUsersPage from './pages/users/AdminUsersPage'
+import AdminReviewsPage from './pages/reviews/AdminReviewsPage'
 
 function RootRedirect() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
-  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <HomePage />
 }
 
 function App() {
@@ -54,10 +64,14 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<RootRedirect />} />
+        {/* Always shows the public homepage, even for signed-in users — see
+            the "Homepage" link in Navbar for non-admin roles. */}
+        <Route path="/home" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
         <Route path="/destinations" element={<DestinationListPage />} />
+        <Route path="/destinations/:id" element={<DestinationDetailPage />} />
         <Route path="/packages" element={<PackageListPage />} />
         <Route path="/packages/:id" element={<PackageDetailPage />} />
         <Route path="/accommodations" element={<AccommodationListPage />} />
@@ -66,40 +80,52 @@ function App() {
         <Route path="/vehicles/:id" element={<VehicleDetailPage />} />
 
         <Route element={<ProtectedRoute />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/packages/mine" element={<MyPackagesPage />} />
-          <Route path="/packages/new" element={<CreatePackagePage />} />
-          <Route path="/packages/:id/edit" element={<EditPackagePage />} />
-          <Route path="/bookings/mine" element={<MyBookingsPage />} />
-          <Route path="/bookings/:id" element={<BookingDetailPage />} />
-          <Route path="/accommodations/mine" element={<MyAccommodationsPage />} />
-          <Route path="/accommodations/new" element={<CreateAccommodationPage />} />
-          <Route path="/accommodations/:id/edit" element={<EditAccommodationPage />} />
-          <Route path="/accommodations/owner/reservations" element={<OwnerReservationsPage />} />
-          <Route path="/reservations/mine" element={<MyReservationsPage />} />
-          <Route path="/vehicles/mine" element={<MyVehiclesPage />} />
-          <Route path="/vehicles/new" element={<CreateVehiclePage />} />
-          <Route path="/vehicles/:id/edit" element={<EditVehiclePage />} />
-          <Route path="/vehicles/owner/hires" element={<OwnerHiresPage />} />
-          <Route path="/hires/mine" element={<MyHiresPage />} />
-          <Route path="/checkout/:payableType/:payableId" element={<CheckoutPage />} />
-          <Route path="/payments/mine" element={<MyPaymentsPage />} />
-          <Route path="/payments/:id/invoice" element={<InvoicePage />} />
-          <Route path="/reviews/mine" element={<MyReviewsPage />} />
-          <Route path="/support/mine" element={<MyTicketsPage />} />
-          <Route path="/support/new" element={<NewTicketPage />} />
-          <Route path="/support/:id" element={<TicketDetailPage />} />
+          <Route element={<AccountLayout />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/bookings/mine" element={<MyBookingsPage />} />
+            <Route path="/bookings/:id" element={<BookingDetailPage />} />
+            <Route path="/accommodations/mine" element={<MyAccommodationsPage />} />
+            <Route path="/accommodations/new" element={<CreateAccommodationPage />} />
+            <Route path="/accommodations/:id/edit" element={<EditAccommodationPage />} />
+            <Route path="/accommodations/owner/reservations" element={<OwnerReservationsPage />} />
+            <Route path="/reservations/mine" element={<MyReservationsPage />} />
+            <Route path="/vehicles/mine" element={<MyVehiclesPage />} />
+            <Route path="/vehicles/new" element={<CreateVehiclePage />} />
+            <Route path="/vehicles/:id/edit" element={<EditVehiclePage />} />
+            <Route path="/vehicles/owner/hires" element={<OwnerHiresPage />} />
+            <Route path="/hires/mine" element={<MyHiresPage />} />
+            <Route path="/checkout/:payableType/:payableId" element={<CheckoutPage />} />
+            <Route path="/payments/mine" element={<MyPaymentsPage />} />
+            <Route path="/payments/:id/invoice" element={<InvoicePage />} />
+            <Route path="/reviews/mine" element={<MyReviewsPage />} />
+            <Route path="/support/mine" element={<MyTicketsPage />} />
+            <Route path="/support/new" element={<NewTicketPage />} />
+            <Route path="/support/:id" element={<TicketDetailPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute roles={['ADMIN', 'GUIDE']} />}>
+          <Route element={<AccountLayout />}>
+            <Route path="/packages/mine" element={<MyPackagesPage />} />
+            <Route path="/packages/new" element={<CreatePackagePage />} />
+            <Route path="/packages/:id/edit" element={<EditPackagePage />} />
+          </Route>
         </Route>
 
         <Route element={<ProtectedRoute roles={['ADMIN']} />}>
-          <Route path="/admin/destinations" element={<AdminDestinationsPage />} />
-          <Route path="/admin/packages" element={<AdminApprovalsPage />} />
-          <Route path="/admin/bookings" element={<AdminBookingsPage />} />
-          <Route path="/admin/accommodations" element={<AdminAccommodationApprovalsPage />} />
-          <Route path="/admin/vehicles" element={<AdminVehicleApprovalsPage />} />
-          <Route path="/admin/payments" element={<AdminPaymentsPage />} />
-          <Route path="/admin/tickets" element={<AdminTicketsPage />} />
-          <Route path="/admin/tickets/unassigned" element={<AdminUnassignedTicketsPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="destinations" element={<AdminDestinationsPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="packages" element={<AdminApprovalsPage />} />
+            <Route path="bookings" element={<AdminBookingsPage />} />
+            <Route path="accommodations" element={<AdminAccommodationApprovalsPage />} />
+            <Route path="vehicles" element={<AdminVehicleApprovalsPage />} />
+            <Route path="payments" element={<AdminPaymentsPage />} />
+            <Route path="tickets" element={<AdminTicketsPage />} />
+            <Route path="tickets/unassigned" element={<AdminUnassignedTicketsPage />} />
+            <Route path="reviews" element={<AdminReviewsPage />} />
+          </Route>
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

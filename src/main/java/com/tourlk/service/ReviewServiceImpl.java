@@ -1,28 +1,34 @@
 package com.tourlk.service;
 
 import com.tourlk.dto.BookingResponseDto;
+import com.tourlk.dto.GuideReplyRequestDto;
 import com.tourlk.dto.RatingSummaryDto;
 import com.tourlk.dto.ReviewRequestDto;
 import com.tourlk.dto.ReviewResponseDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Review;
+import com.tourlk.entity.TourPackage;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.VehicleHireStatus;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.DuplicateReviewException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.exception.ReviewNotEligibleException;
 import com.tourlk.exception.ReviewableMismatchException;
 import com.tourlk.repo.ReviewRepository;
+import com.tourlk.repo.TourPackageRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -42,6 +48,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final BookingService bookingService;
     private final RoomReservationService roomReservationService;
     private final VehicleHireService vehicleHireService;
+    private final TourPackageRepository tourPackageRepository;
 
     @Override
     @Transactional
@@ -125,6 +132,74 @@ public class ReviewServiceImpl implements ReviewService {
                 .toList();
     }
 
+    @Override
+    @Transactional
+    public ReviewResponseDto replyToReview(Long id, GuideReplyRequestDto request, User currentUser) {
+        Review review = getEntity(id);
+        assertCanReply(review, currentUser);
+
+        review.setGuideReply(request.getReply().trim());
+        review.setGuideReplyAt(LocalDateTime.now());
+
+        return toResponse(reviewRepository.save(review));
+    }
+
+    @Override
+    @Transactional
+    public ReviewResponseDto removeGuideReply(Long id, User currentUser) {
+        Review review = getEntity(id);
+        assertCanReply(review, currentUser);
+
+        review.setGuideReply(null);
+        review.setGuideReplyAt(null);
+
+        return toResponse(reviewRepository.save(review));
+    }
+
+    @Override
+    public List<ReviewResponseDto> getAllReviewsForAdmin(Boolean flaggedOnly) {
+        boolean onlyFlagged = Boolean.TRUE.equals(flaggedOnly);
+        return reviewRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .filter(review -> !onlyFlagged || Boolean.TRUE.equals(review.getFlagged()))
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public ReviewResponseDto flagReview(Long id) {
+        Review review = getEntity(id);
+        review.setFlagged(true);
+        return toResponse(reviewRepository.save(review));
+    }
+
+    @Override
+    @Transactional
+    public ReviewResponseDto unflagReview(Long id) {
+        Review review = getEntity(id);
+        review.setFlagged(false);
+        return toResponse(reviewRepository.save(review));
+    }
+
+    /**
+     * Only TOUR_PACKAGE reviews take a guide reply, and only from the guide
+     * who created that package (or an ADMIN).
+     */
+    private void assertCanReply(Review review, User currentUser) {
+        if (review.getReviewableType() != ReviewableType.TOUR_PACKAGE) {
+            throw new BadRequestException("Only tour package reviews can receive a guide reply");
+        }
+        if (currentUser.getRole() == Role.ADMIN) {
+            return;
+        }
+        TourPackage tourPackage = tourPackageRepository.findById(review.getReviewableId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tour package not found with id: " + review.getReviewableId()));
+        if (!tourPackage.getCreatedBy().getId().equals(currentUser.getId())) {
+            throw new AccessDeniedException("You can only reply to reviews of your own tour packages");
+        }
+    }
+
     private void assertEligible(ReviewRequestDto request, User currentUser) {
         Long sourceId = request.getSourceBookingId();
         Long reviewableId = request.getReviewableId();
@@ -203,6 +278,9 @@ public class ReviewServiceImpl implements ReviewService {
                 .reviewerName(review.getReviewer().getName())
                 .rating(review.getRating())
                 .comment(review.getComment())
+                .flagged(Boolean.TRUE.equals(review.getFlagged()))
+                .guideReply(review.getGuideReply())
+                .guideReplyAt(review.getGuideReplyAt())
                 .createdAt(review.getCreatedAt())
                 .updatedAt(review.getUpdatedAt())
                 .build();

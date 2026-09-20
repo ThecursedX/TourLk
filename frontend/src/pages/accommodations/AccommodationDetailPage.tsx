@@ -9,6 +9,7 @@ import RoomCard from '../../components/accommodations/RoomCard'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import ReviewList from '../../components/reviews/ReviewList'
+import { formatProvince } from '../../types/destination'
 import type { AccommodationResponseDto } from '../../types/accommodation'
 
 export default function AccommodationDetailPage() {
@@ -55,7 +56,10 @@ export default function AccommodationDetailPage() {
         </div>
         <p className="text-slate-600">
           {accommodation.location.name}
-          <span className="text-slate-400"> · {accommodation.location.region}</span>
+          <span className="text-slate-400">
+            {' '}
+            · {accommodation.location.district}, {formatProvince(accommodation.location.province)}
+          </span>
           {accommodation.starRating && (
             <span className="text-slate-400"> · {accommodation.starRating}★</span>
           )}

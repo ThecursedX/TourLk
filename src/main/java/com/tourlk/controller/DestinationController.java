@@ -2,6 +2,7 @@ package com.tourlk.controller;
 
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
+import com.tourlk.enums.Province;
 import com.tourlk.service.DestinationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -61,20 +62,29 @@ public class DestinationController {
 
     /**
      * Public browse — active destinations only. Optional {@code search}
-     * (name contains, case-insensitive) or {@code region} (exact) filter;
-     * if both are given, {@code search} wins.
+     * (name contains, case-insensitive) or {@code province} (e.g.
+     * {@code SOUTHERN}) filter; if both are given, {@code search} wins.
      */
     @GetMapping
     public ResponseEntity<List<DestinationResponseDto>> browse(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String region) {
+            @RequestParam(required = false) Province province) {
         if (search != null && !search.isBlank()) {
             return ResponseEntity.ok(destinationService.searchByName(search));
         }
-        if (region != null && !region.isBlank()) {
-            return ResponseEntity.ok(destinationService.getByRegion(region));
+        if (province != null) {
+            return ResponseEntity.ok(destinationService.getByProvince(province));
         }
         return ResponseEntity.ok(destinationService.getAllActive());
+    }
+
+    /**
+     * Category suggestions for the admin destination form. Declared before
+     * {@code /{id}}; Spring prefers the literal path either way.
+     */
+    @GetMapping("/categories")
+    public ResponseEntity<List<String>> categories() {
+        return ResponseEntity.ok(destinationService.getCategorySuggestions());
     }
 
     @GetMapping("/all")

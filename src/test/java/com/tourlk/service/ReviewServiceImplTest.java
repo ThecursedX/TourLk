@@ -2,28 +2,33 @@ package com.tourlk.service;
 
 import com.tourlk.dto.BookingPackageSummaryDto;
 import com.tourlk.dto.BookingResponseDto;
+import com.tourlk.dto.GuideReplyRequestDto;
 import com.tourlk.dto.RatingSummaryDto;
 import com.tourlk.dto.ReviewRequestDto;
 import com.tourlk.dto.ReviewResponseDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.dto.RoomSummaryDto;
 import com.tourlk.entity.Review;
+import com.tourlk.entity.TourPackage;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.DuplicateReviewException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.exception.ReviewNotEligibleException;
 import com.tourlk.exception.ReviewableMismatchException;
 import com.tourlk.repo.ReviewRepository;
+import com.tourlk.repo.TourPackageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.util.List;
@@ -53,6 +58,8 @@ class ReviewServiceImplTest {
     private RoomReservationService roomReservationService;
     @Mock
     private VehicleHireService vehicleHireService;
+    @Mock
+    private TourPackageRepository tourPackageRepository;
 
     @InjectMocks
     private ReviewServiceImpl service;
@@ -259,5 +266,103 @@ class ReviewServiceImplTest {
 
         assertThat(summary.getTotalReviews()).isZero();
         assertThat(summary.getAverageRating()).isEqualTo(0.0);
+    }
+
+    // ------------------------------------------------------------------
+    // guide replies
+    // ------------------------------------------------------------------
+
+    private User guide(Long id) {
+        return User.builder().id(id).name("Gary Guide").role(Role.GUIDE).build();
+    }
+
+    private TourPackage packageOwnedBy(User owner) {
+        return TourPackage.builder().id(100L).createdBy(owner).build();
+    }
+
+    @Test
+    void replyToReview_byOwningGuide_savesTrimmedReplyWithTimestamp() {
+        User owner = guide(20L);
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(persistedReview(reviewer)));
+        when(tourPackageRepository.findById(100L)).thenReturn(Optional.of(packageOwnedBy(owner)));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReviewResponseDto result = service.replyToReview(7L, new GuideReplyRequestDto("  Thanks!  "), owner);
+
+        assertThat(result.getGuideReply()).isEqualTo("Thanks!");
+        assertThat(result.getGuideReplyAt()).isNotNull();
+    }
+
+    @Test
+    void replyToReview_byOtherGuide_throwsAccessDenied() {
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(persistedReview(reviewer)));
+        when(tourPackageRepository.findById(100L)).thenReturn(Optional.of(packageOwnedBy(guide(20L))));
+
+        assertThatThrownBy(() -> service.replyToReview(7L, new GuideReplyRequestDto("Hi"), guide(21L)))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    void replyToReview_byAdmin_skipsOwnershipCheck() {
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(persistedReview(reviewer)));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReviewResponseDto result = service.replyToReview(7L, new GuideReplyRequestDto("Hi"), admin);
+
+        assertThat(result.getGuideReply()).isEqualTo("Hi");
+        verify(tourPackageRepository, never()).findById(any());
+    }
+
+    @Test
+    void replyToReview_onNonPackageReview_throwsBadRequest() {
+        Review vehicleReview = persistedReview(reviewer);
+        vehicleReview.setReviewableType(ReviewableType.VEHICLE);
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(vehicleReview));
+
+        assertThatThrownBy(() -> service.replyToReview(7L, new GuideReplyRequestDto("Hi"), admin))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void removeGuideReply_clearsReplyAndTimestamp() {
+        Review replied = persistedReview(reviewer);
+        replied.setGuideReply("Thanks!");
+        replied.setGuideReplyAt(java.time.LocalDateTime.now());
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(replied));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ReviewResponseDto result = service.removeGuideReply(7L, admin);
+
+        assertThat(result.getGuideReply()).isNull();
+        assertThat(result.getGuideReplyAt()).isNull();
+    }
+
+    // ------------------------------------------------------------------
+    // moderation
+    // ------------------------------------------------------------------
+
+    @Test
+    void flagReview_thenUnflagReview_togglesFlag() {
+        Review review = persistedReview(reviewer);
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(review));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.flagReview(7L).isFlagged()).isTrue();
+        assertThat(service.unflagReview(7L).isFlagged()).isFalse();
+    }
+
+    @Test
+    void getAllReviewsForAdmin_flaggedOnly_filtersOutUnflaggedAndLegacyNullFlags() {
+        Review flagged = persistedReview(reviewer);
+        flagged.setFlagged(true);
+        Review clean = persistedReview(reviewer);
+        Review legacy = persistedReview(reviewer);
+        legacy.setFlagged(null);
+        when(reviewRepository.findAll(any(Sort.class))).thenReturn(List.of(flagged, clean, legacy));
+
+        assertThat(service.getAllReviewsForAdmin(true)).hasSize(1);
+        assertThat(service.getAllReviewsForAdmin(null)).hasSize(3);
+        assertThat(service.getAllReviewsForAdmin(false)).hasSize(3);
     }
 }

@@ -3,7 +3,7 @@ import type { TicketPriority } from '../../types/supportTicket'
 const PRIORITY_CLASSES: Record<TicketPriority, string> = {
   LOW: 'bg-slate-100 text-slate-600',
   MEDIUM: 'bg-sky-100 text-sky-800',
-  HIGH: 'bg-orange-100 text-orange-800',
+  HIGH: 'bg-coral-100 text-coral-700',
   URGENT: 'bg-red-100 text-red-700',
 }
 

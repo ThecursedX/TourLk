@@ -11,7 +11,7 @@ interface PackageCardProps {
 
 export default function PackageCard({ tourPackage, footer }: PackageCardProps) {
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3" attention={tourPackage.status === 'PENDING_APPROVAL'}>
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">{tourPackage.title}</h3>
         <StatusBadge status={tourPackage.status} />
@@ -24,7 +24,7 @@ export default function PackageCard({ tourPackage, footer }: PackageCardProps) {
           {tourPackage.price.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link
           to={`/packages/${tourPackage.id}`}
           className="text-sm font-medium text-blue-600 hover:underline"

@@ -2,6 +2,7 @@ package com.tourlk.repo;
 
 import com.tourlk.entity.User;
 import com.tourlk.enums.Role;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -14,5 +15,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     List<User> findByRole(Role role);
+
+    /** Admin search: the term may appear in the name or the email (case-insensitive). */
+    List<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String name, String email, Sort sort);
 
 }

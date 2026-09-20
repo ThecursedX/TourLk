@@ -1,5 +1,6 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.GuideReplyRequestDto;
 import com.tourlk.dto.RatingSummaryDto;
 import com.tourlk.dto.ReviewRequestDto;
 import com.tourlk.dto.ReviewResponseDto;
@@ -81,6 +82,41 @@ public class ReviewController {
     public ResponseEntity<List<ReviewResponseDto>> mine(Authentication authentication) {
         User currentUser = currentUser(authentication);
         return ResponseEntity.ok(reviewService.getReviewsByUser(currentUser.getId()));
+    }
+
+    /** GUIDE (owner of the reviewed package) or ADMIN; ownership is enforced in the service. */
+    @PutMapping("/{id}/reply")
+    @PreAuthorize("hasAnyRole('GUIDE','ADMIN')")
+    public ResponseEntity<ReviewResponseDto> reply(@PathVariable Long id,
+                                                    @Valid @RequestBody GuideReplyRequestDto request,
+                                                    Authentication authentication) {
+        return ResponseEntity.ok(reviewService.replyToReview(id, request, currentUser(authentication)));
+    }
+
+    @DeleteMapping("/{id}/reply")
+    @PreAuthorize("hasAnyRole('GUIDE','ADMIN')")
+    public ResponseEntity<ReviewResponseDto> removeReply(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(reviewService.removeGuideReply(id, currentUser(authentication)));
+    }
+
+    /** ADMIN moderation view; pass {@code flaggedOnly=true} for just the flagged ones. */
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<ReviewResponseDto>> allForAdmin(
+            @RequestParam(required = false) Boolean flaggedOnly) {
+        return ResponseEntity.ok(reviewService.getAllReviewsForAdmin(flaggedOnly));
+    }
+
+    @PutMapping("/{id}/flag")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ReviewResponseDto> flag(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.flagReview(id));
+    }
+
+    @PutMapping("/{id}/unflag")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ReviewResponseDto> unflag(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.unflagReview(id));
     }
 
     private User currentUser(Authentication authentication) {

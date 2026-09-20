@@ -6,7 +6,7 @@ export interface ReviewRequestDto {
   reviewableId: number
   sourceBookingId: number
   rating: number
-  comment?: string
+  comment: string
 }
 
 // Matches com.tourlk.dto.ReviewResponseDto
@@ -19,6 +19,9 @@ export interface ReviewResponseDto {
   reviewerName: string
   rating: number
   comment: string | null
+  flagged: boolean
+  guideReply: string | null
+  guideReplyAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -29,4 +32,9 @@ export interface RatingSummaryDto {
   reviewableId: number
   averageRating: number
   totalReviews: number
+}
+
+// Matches com.tourlk.dto.GuideReplyRequestDto
+export interface GuideReplyRequestDto {
+  reply: string
 }
