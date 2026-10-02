@@ -36,6 +36,10 @@ export type NotificationType =
   | 'ROOM_RESERVATION_CONFIRMED'
   | 'ROOM_RESERVATION_CANCELLED'
   | 'ROOM_RESERVATION_COMPLETED'
+  | 'ACCOMMODATION_SUBMITTED'
+  | 'ACCOMMODATION_APPROVED'
+  | 'ACCOMMODATION_REJECTED'
+  | 'VEHICLE_SUBMITTED'
 
 // Matches com.tourlk.dto.NotificationResponseDto
 export interface NotificationResponseDto {

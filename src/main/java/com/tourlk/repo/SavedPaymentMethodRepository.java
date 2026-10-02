@@ -12,4 +12,6 @@ public interface SavedPaymentMethodRepository extends JpaRepository<SavedPayment
 
     Optional<SavedPaymentMethod> findByStripePaymentMethodId(String stripePaymentMethodId);
 
+    void deleteByUserId(Long userId);
+
 }

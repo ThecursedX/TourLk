@@ -25,9 +25,31 @@ export interface PaymentResponseDto {
   status: PaymentStatus
   payableType: PayableType
   payableId: number
+  payerId: number
+  payerName: string
+  payerEmail: string
   /** How much was actually refunded, if any — may be less than `amount` under a partial refund. */
   refundAmount: number | null
   createdAt: string
+}
+
+// Optional filters for GET /api/payments (admin)
+export interface PaymentFilters {
+  status?: PaymentStatus
+  payableType?: PayableType
+  search?: string
+  /** ISO date (yyyy-MM-dd), inclusive */
+  from?: string
+  /** ISO date (yyyy-MM-dd), inclusive */
+  to?: string
+}
+
+// Matches com.tourlk.dto.PaymentSummaryDto
+export interface PaymentSummaryDto {
+  totalCollected: number
+  totalRefunded: number
+  pendingCount: number
+  failedCount: number
 }
 
 // Matches com.tourlk.dto.PaymentIntentResponseDto

@@ -71,7 +71,7 @@ function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         {/* Always shows the public homepage, even for signed-in users — see
-            the "Homepage" link in Navbar for non-admin roles. */}
+            the Navbar logo (signed-in users) and the admin Homepage menu. */}
         <Route path="/home" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
@@ -126,6 +126,7 @@ function App() {
 
         <Route element={<ProtectedRoute roles={['ADMIN']} />}>
           <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<Navigate to="/admin/destinations" replace />} />
             <Route path="destinations" element={<AdminDestinationsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="packages" element={<AdminPackagesPage />} />

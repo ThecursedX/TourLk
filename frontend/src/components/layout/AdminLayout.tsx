@@ -47,7 +47,9 @@ export default function AdminLayout() {
         </nav>
       </aside>
       <div className="min-w-0 flex-1">
-        <Outlet />
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <Outlet />
+        </div>
       </div>
     </div>
   )

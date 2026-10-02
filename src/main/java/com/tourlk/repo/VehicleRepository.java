@@ -22,6 +22,8 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
 
     List<Vehicle> findByDriverId(Long driverId);
 
+    long countByDriverId(Long driverId);
+
     @Query("SELECT v FROM Vehicle v WHERE v.status IN :statuses "
             + "AND (:vehicleType IS NULL OR v.vehicleType = :vehicleType) "
             + "AND (:minSeatingCapacity IS NULL OR v.seatingCapacity >= :minSeatingCapacity)")

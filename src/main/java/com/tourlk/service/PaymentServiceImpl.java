@@ -8,6 +8,7 @@ import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
 import com.tourlk.dto.PaymentRequestDto;
 import com.tourlk.dto.PaymentResponseDto;
+import com.tourlk.dto.PaymentSummaryDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Invoice;
@@ -28,17 +29,22 @@ import com.tourlk.exception.PaymentRequiredException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.InvoiceRepository;
 import com.tourlk.repo.PaymentRepository;
+import com.tourlk.repo.PaymentSpecifications;
 import com.tourlk.repo.SavedPaymentMethodRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -270,6 +276,30 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    public List<PaymentResponseDto> searchPayments(PaymentStatus status, PayableType payableType, String search,
+                                                    LocalDate from, LocalDate to) {
+        Specification<Payment> spec = Specification
+                .where(PaymentSpecifications.hasStatus(status))
+                .and(PaymentSpecifications.hasPayableType(payableType))
+                .and(PaymentSpecifications.matchesSearch(search))
+                .and(PaymentSpecifications.createdBetween(from, to));
+        return paymentRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
+    public PaymentSummaryDto getPaymentSummary() {
+        return PaymentSummaryDto.builder()
+                .totalCollected(paymentRepository.sumAmountByStatusIn(EnumSet.of(
+                        PaymentStatus.SUCCEEDED, PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED)))
+                .totalRefunded(paymentRepository.sumRefundAmountByStatus(PaymentStatus.REFUNDED))
+                .pendingCount(paymentRepository.countByStatus(PaymentStatus.PENDING))
+                .failedCount(paymentRepository.countByStatus(PaymentStatus.FAILED))
+                .build();
+    }
+
+    @Override
     public PaymentResponseDto getPaymentById(Long id, User currentUser) {
         Payment payment = getEntity(id);
         assertPayerOrAdmin(payment, currentUser);
@@ -343,6 +373,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .status(payment.getStatus())
                 .payableType(payment.getPayableType())
                 .payableId(payment.getPayableId())
+                .payerId(payment.getPayer().getId())
+                .payerName(payment.getPayer().getName())
+                .payerEmail(payment.getPayer().getEmail())
                 .refundAmount(payment.getRefundAmount())
                 .createdAt(payment.getCreatedAt())
                 .build();

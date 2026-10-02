@@ -241,7 +241,7 @@ class PaymentControllerTest {
     @Test
     @WithMockUser(username = "admin@example.com", roles = "ADMIN")
     void listAllPayments_asAdmin_returnsList() throws Exception {
-        when(paymentService.getAllPayments()).thenReturn(List.of(PaymentResponseDto.builder()
+        when(paymentService.searchPayments(null, null, null, null, null)).thenReturn(List.of(PaymentResponseDto.builder()
                 .id(1L).status(PaymentStatus.SUCCEEDED).payableType(PayableType.BOOKING)
                 .payableId(10L).amount(new BigDecimal("200.00")).currency("usd").build()));
 

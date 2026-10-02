@@ -1,9 +1,11 @@
 import axiosClient from './axiosClient'
 import type {
   InvoiceResponseDto,
+  PaymentFilters,
   PaymentIntentResponseDto,
   PaymentRequestDto,
   PaymentResponseDto,
+  PaymentSummaryDto,
 } from '../types/payment'
 
 export function createPaymentIntent(data: PaymentRequestDto) {
@@ -14,8 +16,13 @@ export function getMyPayments() {
   return axiosClient.get<PaymentResponseDto[]>('/payments/mine').then((res) => res.data)
 }
 
-export function getAllPayments() {
-  return axiosClient.get<PaymentResponseDto[]>('/payments').then((res) => res.data)
+export function getAllPayments(filters: PaymentFilters = {}) {
+  const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value))
+  return axiosClient.get<PaymentResponseDto[]>('/payments', { params }).then((res) => res.data)
+}
+
+export function getPaymentSummary() {
+  return axiosClient.get<PaymentSummaryDto>('/payments/summary').then((res) => res.data)
 }
 
 export function getPaymentById(id: number) {

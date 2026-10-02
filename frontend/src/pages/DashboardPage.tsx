@@ -163,6 +163,7 @@ export default function DashboardPage() {
               description="Review pending accommodations"
             />
             <ModuleTile to="/admin/vehicles" title="Vehicle Approvals" description="Review pending vehicles" tone="sand" />
+            <ModuleTile to="/admin/verifications" title="Licence Verifications" description="Review guide &amp; driver licences" />
             <ModuleTile to="/admin/payments" title="Payments" description="Oversee platform payments" />
             <ModuleTile to="/admin/tickets" title="Support Tickets" description="Manage support tickets" tone="sand" />
             <ModuleTile

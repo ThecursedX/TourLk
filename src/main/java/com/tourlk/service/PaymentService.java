@@ -6,6 +6,11 @@ import com.tourlk.dto.PaymentRequestDto;
 import com.tourlk.dto.PaymentResponseDto;
 import com.tourlk.entity.User;
 
+import com.tourlk.dto.PaymentSummaryDto;
+import com.tourlk.enums.PayableType;
+import com.tourlk.enums.PaymentStatus;
+
+import java.time.LocalDate;
 import java.util.List;
 
 public interface PaymentService {
@@ -23,6 +28,12 @@ public interface PaymentService {
     List<PaymentResponseDto> getPaymentsByUser(Long userId);
 
     List<PaymentResponseDto> getAllPayments();
+
+    /** Admin table: every filter is optional (null = no restriction); newest first. */
+    List<PaymentResponseDto> searchPayments(PaymentStatus status, PayableType payableType, String search,
+                                            LocalDate from, LocalDate to);
+
+    PaymentSummaryDto getPaymentSummary();
 
     PaymentResponseDto getPaymentById(Long id, User currentUser);
 

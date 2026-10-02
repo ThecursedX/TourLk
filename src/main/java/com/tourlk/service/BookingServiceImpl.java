@@ -146,6 +146,9 @@ public class BookingServiceImpl implements BookingService {
         notifyTourist(booking, NotificationType.BOOKING_RESCHEDULE_REQUESTED, "Reschedule requested",
                 "Your request to reschedule your booking for " + booking.getTourPackage().getTitle()
                         + " to " + booking.getRequestedTravelDate() + " has been submitted");
+        notifyPackageOwner(booking, NotificationType.BOOKING_RESCHEDULE_REQUESTED, "Reschedule requested",
+                booking.getTourist().getName() + " asked to move their booking for "
+                        + booking.getTourPackage().getTitle() + " to " + booking.getRequestedTravelDate());
 
         return toResponse(booking);
     }
@@ -208,6 +211,11 @@ public class BookingServiceImpl implements BookingService {
 
         notifyTourist(booking, NotificationType.BOOKING_CANCELLED, "Booking cancelled",
                 "Your booking for " + booking.getTourPackage().getTitle() + " has been cancelled");
+        if (booking.getTourist().getId().equals(currentUser.getId())) {
+            notifyPackageOwner(booking, NotificationType.BOOKING_CANCELLED, "Booking cancelled",
+                    booking.getTourist().getName() + " cancelled their booking for "
+                            + booking.getTourPackage().getTitle());
+        }
 
         return toResponse(booking);
     }
@@ -361,6 +369,11 @@ public class BookingServiceImpl implements BookingService {
 
     private void notifyTourist(Booking booking, NotificationType type, String title, String message) {
         notificationService.notify(booking.getTourist(), type, title, message, "/bookings/" + booking.getId());
+    }
+
+    private void notifyPackageOwner(Booking booking, NotificationType type, String title, String message) {
+        notificationService.notify(booking.getTourPackage().getCreatedBy(), type, title, message,
+                "/bookings/" + booking.getId());
     }
 
     private void assertOwner(Booking booking, User currentUser) {

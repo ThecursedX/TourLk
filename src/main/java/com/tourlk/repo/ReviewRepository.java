@@ -40,6 +40,8 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     List<Review> findByReviewerId(Long reviewerId);
 
+    long countByReviewerId(Long reviewerId);
+
     /**
      * Average rating + review count per reviewable, for many reviewables in
      * one grouped query (e.g. a whole package listing). Reviewables with no

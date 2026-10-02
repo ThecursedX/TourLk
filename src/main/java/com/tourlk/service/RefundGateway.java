@@ -41,6 +41,10 @@ public class RefundGateway {
         payment.setRefundAmount(refundAmount);
         paymentRepository.save(payment);
 
+        notificationService.notify(payment.getPayer(), NotificationType.PAYMENT_REFUNDED,
+                "Refund pending", "A refund of " + refundAmount + " " + payment.getCurrency()
+                        + " is being processed", "/payments/mine");
+
         try {
             RefundCreateParams.Builder params = RefundCreateParams.builder()
                     .setPaymentIntent(payment.getStripePaymentIntentId());

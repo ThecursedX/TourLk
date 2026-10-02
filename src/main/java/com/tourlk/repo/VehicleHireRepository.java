@@ -13,6 +13,8 @@ public interface VehicleHireRepository extends JpaRepository<VehicleHire, Long> 
 
     List<VehicleHire> findByTouristId(Long touristId);
 
+    long countByTouristId(Long touristId);
+
     List<VehicleHire> findByVehicleId(Long vehicleId);
 
     /**

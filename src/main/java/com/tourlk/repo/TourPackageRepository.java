@@ -28,6 +28,8 @@ public interface TourPackageRepository extends JpaRepository<TourPackage, Long>,
 
     List<TourPackage> findByCreatedById(Long userId);
 
+    long countByCreatedById(Long userId);
+
     /**
      * Fetches a package with a pessimistic write lock (row-level "FOR
      * UPDATE"), held for the rest of the caller's transaction. Used by

@@ -13,9 +13,24 @@ import com.tourlk.enums.VerificationStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.ResourceNotFoundException;
+import com.tourlk.repo.AccommodationRepository;
+import com.tourlk.repo.BookingRepository;
+import com.tourlk.repo.NotificationRepository;
+import com.tourlk.repo.PasswordResetTokenRepository;
+import com.tourlk.repo.PaymentRepository;
+import com.tourlk.repo.ReviewRepository;
+import com.tourlk.repo.RoomReservationRepository;
+import com.tourlk.repo.SavedPaymentMethodRepository;
+import com.tourlk.repo.SupportTicketRepository;
+import com.tourlk.repo.TourPackageRepository;
 import com.tourlk.repo.UserRepository;
+import com.tourlk.repo.VehicleHireRepository;
+import com.tourlk.repo.VehicleRepository;
 import com.tourlk.security.JwtUtil;
+import com.stripe.exception.StripeException;
+import com.stripe.model.PaymentMethod;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,8 +38,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -33,6 +50,18 @@ public class UserServiceImpl implements UserService {
     private final JwtUtil jwtUtil;
     private final NotificationService notificationService;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationRepository notificationRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final SavedPaymentMethodRepository savedPaymentMethodRepository;
+    private final BookingRepository bookingRepository;
+    private final VehicleHireRepository vehicleHireRepository;
+    private final RoomReservationRepository roomReservationRepository;
+    private final PaymentRepository paymentRepository;
+    private final ReviewRepository reviewRepository;
+    private final SupportTicketRepository supportTicketRepository;
+    private final VehicleRepository vehicleRepository;
+    private final AccommodationRepository accommodationRepository;
+    private final TourPackageRepository tourPackageRepository;
 
     @Override
     public User getById(Long id) {
@@ -185,13 +214,63 @@ public class UserServiceImpl implements UserService {
         if (user.getStatus() != UserStatus.DEACTIVATED) {
             throw new InvalidStatusTransitionException("Only deactivated accounts can be deleted");
         }
+
+        String blockers = describeBlockingRecords(id);
+        if (blockers != null) {
+            throw new BadRequestException("This user still has " + blockers
+                    + " and cannot be deleted. Keep the account deactivated instead.");
+        }
+
+        // The user's own throwaway rows go first; they would otherwise trip the FKs to users.
+        notificationRepository.deleteByRecipientId(id);
+        passwordResetTokenRepository.deleteByUserId(id);
+        savedPaymentMethodRepository.findByUserIdOrderByCreatedAtDesc(id).forEach(this::detachFromGateway);
+        savedPaymentMethodRepository.deleteByUserId(id);
+
         try {
             userRepository.delete(user);
             userRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw new BadRequestException(
-                    "This user still has bookings, listings or other records and cannot be deleted. "
+                    "This user still has other linked records and cannot be deleted. "
                             + "Keep the account deactivated instead.");
+        }
+    }
+
+    /** Best effort: the card row is going away regardless, so a gateway hiccup must not block the delete. */
+    private void detachFromGateway(com.tourlk.entity.SavedPaymentMethod card) {
+        try {
+            PaymentMethod.retrieve(card.getStripePaymentMethodId()).detach();
+        } catch (StripeException | RuntimeException e) {
+            log.warn("Could not detach Stripe payment method {} while deleting user: {}",
+                    card.getStripePaymentMethodId(), e.getMessage());
+        }
+    }
+
+    /** e.g. "2 bookings and 1 payment", or null when nothing blocks deletion. */
+    private String describeBlockingRecords(Long userId) {
+        List<String> parts = new ArrayList<>();
+        addCount(parts, bookingRepository.countByTouristId(userId), "booking", "bookings");
+        addCount(parts, vehicleHireRepository.countByTouristId(userId), "vehicle hire", "vehicle hires");
+        addCount(parts, roomReservationRepository.countByTouristId(userId), "room reservation", "room reservations");
+        addCount(parts, paymentRepository.countByPayerId(userId), "payment", "payments");
+        addCount(parts, reviewRepository.countByReviewerId(userId), "review", "reviews");
+        addCount(parts, supportTicketRepository.countByRaisedById(userId), "support ticket", "support tickets");
+        addCount(parts, vehicleRepository.countByDriverId(userId), "vehicle", "vehicles");
+        addCount(parts, accommodationRepository.countByOwnerId(userId), "accommodation", "accommodations");
+        addCount(parts, tourPackageRepository.countByCreatedById(userId), "tour package", "tour packages");
+        if (parts.isEmpty()) {
+            return null;
+        }
+        if (parts.size() == 1) {
+            return parts.get(0);
+        }
+        return String.join(", ", parts.subList(0, parts.size() - 1)) + " and " + parts.get(parts.size() - 1);
+    }
+
+    private void addCount(List<String> parts, long count, String singular, String plural) {
+        if (count > 0) {
+            parts.add(count + " " + (count == 1 ? singular : plural));
         }
     }
 

@@ -14,6 +14,11 @@ import com.tourlk.enums.UserStatus;
 import com.tourlk.enums.VerificationStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
+import com.tourlk.repo.BookingRepository;
+import com.tourlk.repo.NotificationRepository;
+import com.tourlk.repo.PasswordResetTokenRepository;
+import com.tourlk.repo.PaymentRepository;
+import com.tourlk.repo.SavedPaymentMethodRepository;
 import com.tourlk.repo.UserRepository;
 import com.tourlk.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +58,31 @@ class UserServiceImplTest {
     private NotificationService notificationService;
     @Mock
     private PasswordEncoder passwordEncoder;
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock
+    private SavedPaymentMethodRepository savedPaymentMethodRepository;
+    @Mock
+    private BookingRepository bookingRepository;
+    @Mock
+    private PaymentRepository paymentRepository;
+    // Remaining record repositories default to count 0 (unstubbed mocks).
+    @Mock
+    private com.tourlk.repo.VehicleHireRepository vehicleHireRepository;
+    @Mock
+    private com.tourlk.repo.RoomReservationRepository roomReservationRepository;
+    @Mock
+    private com.tourlk.repo.ReviewRepository reviewRepository;
+    @Mock
+    private com.tourlk.repo.SupportTicketRepository supportTicketRepository;
+    @Mock
+    private com.tourlk.repo.VehicleRepository vehicleRepository;
+    @Mock
+    private com.tourlk.repo.AccommodationRepository accommodationRepository;
+    @Mock
+    private com.tourlk.repo.TourPackageRepository tourPackageRepository;
 
     @InjectMocks
     private UserServiceImpl service;
@@ -176,6 +206,33 @@ class UserServiceImplTest {
 
         verify(userRepository).delete(tourist);
         verify(userRepository).flush();
+    }
+
+    @Test
+    void deleteUser_deactivatedWithOnlyNotifications_clearsThrowawayRowsThenDeletes() {
+        tourist.setStatus(UserStatus.DEACTIVATED);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(tourist));
+
+        service.deleteUser(1L, admin);
+
+        verify(notificationRepository).deleteByRecipientId(1L);
+        verify(passwordResetTokenRepository).deleteByUserId(1L);
+        verify(savedPaymentMethodRepository).deleteByUserId(1L);
+        verify(userRepository).delete(tourist);
+    }
+
+    @Test
+    void deleteUser_withBooking_failsNamingTheBlockingRecords() {
+        tourist.setStatus(UserStatus.DEACTIVATED);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(tourist));
+        when(bookingRepository.countByTouristId(1L)).thenReturn(2L);
+        when(paymentRepository.countByPayerId(1L)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.deleteUser(1L, admin))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("2 bookings and 1 payment");
+        verify(userRepository, never()).delete(any());
+        verify(notificationRepository, never()).deleteByRecipientId(any());
     }
 
     @Test

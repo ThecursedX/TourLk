@@ -10,6 +10,7 @@ import com.tourlk.entity.Destination;
 import com.tourlk.entity.Room;
 import com.tourlk.entity.User;
 import com.tourlk.enums.AccommodationStatus;
+import com.tourlk.enums.NotificationType;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.exception.BadRequestException;
@@ -44,6 +45,7 @@ public class AccommodationServiceImpl implements AccommodationService {
     private final RoomRepository roomRepository;
     private final RoomReservationRepository roomReservationRepository;
     private final DestinationService destinationService;
+    private final NotificationService notificationService;
 
     @Override
     public AccommodationResponseDto createAccommodation(AccommodationRequestDto request, User currentUser) {
@@ -84,7 +86,10 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.DRAFT, "submitted for approval");
 
         accommodation.setStatus(AccommodationStatus.PENDING_APPROVAL);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notifyAdmins(NotificationType.ACCOMMODATION_SUBMITTED, "Accommodation awaiting approval",
+                "\"" + saved.getName() + "\" was submitted for approval", "/admin/accommodations");
+        return toResponse(saved);
     }
 
     @Override
@@ -93,7 +98,10 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.PENDING_APPROVAL, "approved");
 
         accommodation.setStatus(AccommodationStatus.ACTIVE);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notify(saved.getOwner(), NotificationType.ACCOMMODATION_APPROVED, "Accommodation approved",
+                "\"" + saved.getName() + "\" was approved and is now live.", "/accommodations/mine");
+        return toResponse(saved);
     }
 
     @Override
@@ -102,7 +110,11 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.PENDING_APPROVAL, "rejected");
 
         accommodation.setStatus(AccommodationStatus.DRAFT);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notify(saved.getOwner(), NotificationType.ACCOMMODATION_REJECTED, "Accommodation not approved",
+                "\"" + saved.getName() + "\" was not approved. Update the listing and submit it again.",
+                "/accommodations/mine");
+        return toResponse(saved);
     }
 
     @Override

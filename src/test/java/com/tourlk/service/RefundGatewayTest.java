@@ -75,7 +75,7 @@ class RefundGatewayTest {
         assertThat(result.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
         assertThat(result.getRefundAmount()).isEqualByComparingTo("200.00");
         assertThat(paramsCaptor.getValue().getAmount()).isNull();
-        verify(notificationService).notify(any(), eq(NotificationType.PAYMENT_REFUNDED), any(), any(), any());
+        verify(notificationService, org.mockito.Mockito.times(2)).notify(any(), eq(NotificationType.PAYMENT_REFUNDED), any(), any(), any());
     }
 
     @Test

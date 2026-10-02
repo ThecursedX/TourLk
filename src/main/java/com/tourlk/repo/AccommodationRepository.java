@@ -15,6 +15,8 @@ public interface AccommodationRepository extends JpaRepository<Accommodation, Lo
 
     List<Accommodation> findByOwnerId(Long ownerId);
 
+    long countByOwnerId(Long ownerId);
+
     @Query("SELECT a FROM Accommodation a WHERE a.status IN :statuses "
             + "AND (:locationId IS NULL OR a.location.id = :locationId)")
     List<Accommodation> search(@Param("statuses") Collection<AccommodationStatus> statuses,

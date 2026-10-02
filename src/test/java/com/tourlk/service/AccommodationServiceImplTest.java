@@ -57,6 +57,8 @@ class AccommodationServiceImplTest {
     private RoomReservationRepository roomReservationRepository;
     @Mock
     private DestinationService destinationService;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private AccommodationServiceImpl service;

@@ -59,7 +59,9 @@ public class VehicleServiceImpl implements VehicleService {
                 .build();
         applyDetails(vehicle, request);
 
-        return toResponse(vehicleRepository.save(vehicle));
+        Vehicle saved = vehicleRepository.save(vehicle);
+        notifyAdminsOfSubmission(saved);
+        return toResponse(saved);
     }
 
     @Override
@@ -86,7 +88,9 @@ public class VehicleServiceImpl implements VehicleService {
         assertStatus(vehicle, VehicleStatus.DRAFT, "submitted for verification");
 
         vehicle.setStatus(VehicleStatus.PENDING_VERIFICATION);
-        return toResponse(vehicleRepository.save(vehicle));
+        Vehicle saved = vehicleRepository.save(vehicle);
+        notifyAdminsOfSubmission(saved);
+        return toResponse(saved);
     }
 
     @Override
@@ -224,6 +228,11 @@ public class VehicleServiceImpl implements VehicleService {
                     "Only " + required + " vehicles can be " + action + ", but this vehicle is "
                             + vehicle.getStatus());
         }
+    }
+
+    private void notifyAdminsOfSubmission(Vehicle vehicle) {
+        notificationService.notifyAdmins(NotificationType.VEHICLE_SUBMITTED, "Vehicle awaiting verification",
+                describe(vehicle) + " was submitted for verification", "/admin/vehicles");
     }
 
     private String describe(Vehicle vehicle) {
