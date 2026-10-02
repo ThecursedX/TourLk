@@ -4,8 +4,10 @@ import { isAxiosError } from 'axios'
 import { getDestinationById } from '../../api/destinationApi'
 import { browseAccommodations } from '../../api/accommodationApi'
 import AccommodationCard from '../../components/accommodations/AccommodationCard'
+import DestinationClosureBanner from '../../components/destinations/DestinationClosureBanner'
+import DestinationMap from '../../components/destinations/DestinationMap'
 import Card from '../../components/ui/Card'
-import { formatProvince, type DestinationResponseDto } from '../../types/destination'
+import { formatProvince, hasCoordinates, type DestinationResponseDto } from '../../types/destination'
 import type { AccommodationResponseDto } from '../../types/accommodation'
 
 export default function DestinationDetailPage() {
@@ -54,6 +56,8 @@ export default function DestinationDetailPage() {
         &larr; Back to destinations
       </Link>
 
+      <DestinationClosureBanner destination={destination} />
+
       <Card className="flex flex-col gap-4">
         {gallery.length > 0 && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -98,6 +102,22 @@ export default function DestinationDetailPage() {
               <dd className="text-slate-900">{destination.bestTimeToVisit}</dd>
             </div>
           )}
+          {destination.openingHours && (
+            <div>
+              <dt className="text-xs uppercase text-slate-500">Opening hours</dt>
+              <dd className="text-slate-900">{destination.openingHours}</dd>
+            </div>
+          )}
+          {destination.entryFee != null && (
+            <div>
+              <dt className="text-xs uppercase text-slate-500">Entry fee</dt>
+              <dd className="text-slate-900">
+                {destination.entryFee === 0
+                  ? 'Free'
+                  : destination.entryFee.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-xs uppercase text-slate-500">Active tour packages</dt>
             <dd className="text-slate-900">{destination.activePackageCount ?? '—'}</dd>
@@ -107,6 +127,24 @@ export default function DestinationDetailPage() {
             <dd className="text-slate-900">{destination.activeAccommodationCount ?? accommodations.length}</dd>
           </div>
         </div>
+
+        {destination.visitorRules && (
+          <div className="border-t border-slate-200 pt-4">
+            <h2 className="mb-1 text-xs uppercase text-slate-500">Visitor rules &amp; guidelines</h2>
+            <p className="whitespace-pre-line text-sm text-slate-700">{destination.visitorRules}</p>
+          </div>
+        )}
+
+        {hasCoordinates(destination) && (
+          <div className="border-t border-slate-200 pt-4">
+            <h2 className="mb-2 text-xs uppercase text-slate-500">Location</h2>
+            <DestinationMap
+              name={destination.name}
+              latitude={destination.latitude as number}
+              longitude={destination.longitude as number}
+            />
+          </div>
+        )}
 
         <div className="flex gap-4 border-t border-slate-200 pt-4 text-sm font-medium text-blue-600">
           <Link to="/packages" className="hover:underline">

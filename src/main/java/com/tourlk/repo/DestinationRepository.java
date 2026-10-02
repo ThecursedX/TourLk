@@ -5,12 +5,17 @@ import com.tourlk.enums.DestinationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
 
     List<Destination> findByStatus(DestinationStatus status);
+
+    List<Destination> findByStatusIn(Collection<DestinationStatus> statuses);
+
+    List<Destination> findByStatusAndClosureUntilBefore(DestinationStatus status, java.time.LocalDate date);
 
     List<Destination> findByNameContainingIgnoreCase(String name);
 

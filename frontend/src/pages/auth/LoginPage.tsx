@@ -94,6 +94,9 @@ export default function LoginPage() {
             onChange={(e) => setValues((v) => ({ ...v, password: e.target.value }))}
             error={fieldErrors.password}
           />
+          <Link to="/forgot-password" className="-mt-2 self-end text-sm text-blue-600 hover:underline">
+            Forgot password?
+          </Link>
           {formError && <p className="text-sm text-red-600">{formError}</p>}
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Logging in...' : 'Log in'}

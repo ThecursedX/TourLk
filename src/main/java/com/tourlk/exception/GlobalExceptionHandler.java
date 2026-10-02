@@ -48,6 +48,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "Each attached file must be 5 MB or smaller", request);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex,
                                                          HttpServletRequest request) {
@@ -70,6 +76,31 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCapacityExceeded(CapacityExceededException ex,
                                                                   HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DepartureHasBookingsException.class)
+    public ResponseEntity<ErrorResponse> handleDepartureHasBookings(DepartureHasBookingsException ex,
+                                                                      HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ChangesRequireConfirmationException.class)
+    public ResponseEntity<ErrorResponse> handleChangesRequireConfirmation(ChangesRequireConfirmationException ex,
+                                                                           HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("changedFields", ex.getChangedFields());
+        details.put("affectedBookings", ex.getAffectedBookings());
+
+        ErrorResponse body = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.CONFLICT.value())
+                .error(HttpStatus.CONFLICT.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ChangesRequireConfirmationException.CODE)
+                .details(details)
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(RoomUnavailableException.class)
@@ -129,6 +160,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TicketAccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleTicketAccessDenied(TicketAccessDeniedException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(LicenceNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleLicenceNotVerified(LicenceNotVerifiedException ex,
                                                                     HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
     }

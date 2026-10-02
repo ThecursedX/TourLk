@@ -1,6 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../auth/authStore'
 import Button from '../ui/Button'
+import NotificationBell from './NotificationBell'
 
 const navLink = 'text-sm font-medium text-slate-700 hover:text-blue-600 transition-colors'
 
@@ -69,6 +70,7 @@ export default function Navbar() {
               <Link to="/profile" className={navLink}>
                 Profile
               </Link>
+              <NotificationBell />
               <span className="flex items-center gap-2 rounded-full bg-slate-100 py-1 pl-1 pr-3 text-sm text-slate-700">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
                   {user.name?.slice(0, 1).toUpperCase()}

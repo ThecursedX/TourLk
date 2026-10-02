@@ -4,12 +4,14 @@ import {
   archiveAccommodation,
   deactivateAccommodation,
   getMyAccommodations,
+  markAccommodationTemporarilyUnavailable,
   reactivateAccommodation,
+  resumeAccommodation,
   submitAccommodationForApproval,
 } from '../../api/accommodationApi'
 import AccommodationCard from '../../components/accommodations/AccommodationCard'
 import Button from '../../components/ui/Button'
-import type { AccommodationResponseDto } from '../../types/accommodation'
+import { isLiveAccommodation, type AccommodationResponseDto } from '../../types/accommodation'
 
 export default function MyAccommodationsPage() {
   const [accommodations, setAccommodations] = useState<AccommodationResponseDto[]>([])
@@ -76,7 +78,7 @@ export default function MyAccommodationsPage() {
               accommodation={accommodation}
               footer={
                 <div className="flex flex-wrap gap-2">
-                  {(accommodation.status === 'DRAFT' || accommodation.status === 'ACTIVE') && (
+                  {(accommodation.status === 'DRAFT' || isLiveAccommodation(accommodation.status)) && (
                     <Link to={`/accommodations/${accommodation.id}/edit`}>
                       <Button variant="secondary" disabled={disabled}>
                         Manage
@@ -92,7 +94,25 @@ export default function MyAccommodationsPage() {
                       Submit
                     </Button>
                   )}
-                  {accommodation.status === 'ACTIVE' && (
+                  {(accommodation.status === 'ACTIVE' || accommodation.status === 'FULLY_BOOKED') && (
+                    <Button
+                      variant="secondary"
+                      disabled={disabled}
+                      onClick={() => runAction(accommodation.id, markAccommodationTemporarilyUnavailable)}
+                    >
+                      Pause bookings
+                    </Button>
+                  )}
+                  {accommodation.status === 'TEMPORARILY_UNAVAILABLE' && (
+                    <Button
+                      variant="secondary"
+                      disabled={disabled}
+                      onClick={() => runAction(accommodation.id, resumeAccommodation)}
+                    >
+                      Resume bookings
+                    </Button>
+                  )}
+                  {isLiveAccommodation(accommodation.status) && (
                     <Button
                       variant="secondary"
                       disabled={disabled}

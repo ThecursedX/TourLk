@@ -7,6 +7,7 @@ const STATUS_CLASSES: Record<BookingStatus, string> = {
   RESCHEDULED: 'bg-blue-100 text-blue-800',
   COMPLETED: 'bg-slate-200 text-slate-700',
   CANCELLED: 'bg-red-100 text-red-700',
+  REJECTED: 'bg-red-100 text-red-700',
 }
 
 const STATUS_LABELS: Record<BookingStatus, string> = {
@@ -16,6 +17,7 @@ const STATUS_LABELS: Record<BookingStatus, string> = {
   RESCHEDULED: 'Rescheduled',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
+  REJECTED: 'Rejected',
 }
 
 interface BookingStatusBadgeProps {

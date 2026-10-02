@@ -1,5 +1,8 @@
 package com.tourlk.service;
 
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.eq;
+import com.tourlk.enums.NotificationType;
 import com.tourlk.dto.VehicleHireRequestDto;
 import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.User;
@@ -48,6 +51,8 @@ class VehicleHireServiceImplTest {
     private VehicleHireRepository vehicleHireRepository;
     @Mock
     private VehicleRepository vehicleRepository;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private VehicleHireServiceImpl service;
@@ -67,7 +72,7 @@ class VehicleHireServiceImplTest {
         vehicle = Vehicle.builder()
                 .id(40L).driver(driver).vehicleType(VehicleType.CAR)
                 .make("Toyota").model("Prius").registrationNumber("CAB-1234")
-                .seatingCapacity(4).pricePerDay(new BigDecimal("100.00")).status(VehicleStatus.ACTIVE)
+                .seatingCapacity(4).pricePerDay(new BigDecimal("100.00")).status(VehicleStatus.AVAILABLE)
                 .build();
     }
 
@@ -115,7 +120,7 @@ class VehicleHireServiceImplTest {
 
     @Test
     void createHire_vehicleNotActive_throwsBadRequest() {
-        vehicle.setStatus(VehicleStatus.INACTIVE);
+        vehicle.setStatus(VehicleStatus.UNDER_MAINTENANCE);
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
 
         VehicleHireRequestDto request = new VehicleHireRequestDto(
@@ -225,5 +230,70 @@ class VehicleHireServiceImplTest {
 
         assertThatThrownBy(() -> service.getHireById(404L, tourist))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ------------------------------------------------------------------
+    // in-app notifications
+    // ------------------------------------------------------------------
+
+    @Test
+    void createHire_notifiesTheVehicleOwner() {
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.createHire(new VehicleHireRequestDto(
+                40L, LocalDate.now().plusDays(5), LocalDate.now().plusDays(7), "CMB Airport", null), tourist);
+
+        verify(notificationService).notify(eq(driver), eq(NotificationType.VEHICLE_HIRE_REQUESTED), any(), any(),
+                eq("/vehicles/owner/hires"));
+    }
+
+    @Test
+    void confirmHire_byOwner_notifiesOnlyTheTourist() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmHire(8L, driver);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_CONFIRMED), any(), any(), eq("/hires/mine"));
+        verify(notificationService, never()).notify(eq(driver), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmHireAfterPayment_notifiesBothTouristAndOwner() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmHireAfterPayment(8L);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_CONFIRMED), any(), any(), any());
+        verify(notificationService).notify(eq(driver), eq(NotificationType.VEHICLE_HIRE_CONFIRMED), any(), any(), any());
+    }
+
+    @Test
+    void cancelHire_byTourist_notifiesTheOwner_andByOwnerNotifiesTheTourist() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.CONFIRMED, tourist)));
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+        service.cancelHire(8L, tourist);
+        verify(notificationService).notify(eq(driver), eq(NotificationType.VEHICLE_HIRE_CANCELLED), any(), any(), any());
+
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.CONFIRMED, tourist)));
+        service.cancelHire(8L, driver);
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_CANCELLED), any(), any(), any());
+    }
+
+    @Test
+    void completeHire_notifiesTheTourist() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.CONFIRMED, tourist)));
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.completeHire(8L, driver);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_COMPLETED), any(), any(), any());
     }
 }

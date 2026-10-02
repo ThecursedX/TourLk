@@ -10,6 +10,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,5 +34,17 @@ public class ReviewRequestDto {
 
     @Size(max = 1000, message = "Comment must be at most 1000 characters")
     private String comment;
+
+    @Size(max = 5, message = "You can attach at most 5 images")
+    private List<String> imageUrls;
+
+    public ReviewRequestDto(ReviewableType reviewableType, Long reviewableId, Long sourceBookingId,
+                             Integer rating, String comment) {
+        this.reviewableType = reviewableType;
+        this.reviewableId = reviewableId;
+        this.sourceBookingId = sourceBookingId;
+        this.rating = rating;
+        this.comment = comment;
+    }
 
 }

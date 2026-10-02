@@ -10,6 +10,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -29,5 +31,18 @@ public class AccommodationRequestDto {
     @Min(value = 1, message = "Star rating must be between 1 and 5")
     @Max(value = 5, message = "Star rating must be between 1 and 5")
     private Integer starRating;
+
+    @Size(max = 500, message = "Address must be at most 500 characters")
+    private String address;
+
+    @Size(max = 30, message = "At most 30 facilities")
+    private List<@NotBlank(message = "Facility must not be blank")
+                 @Size(max = 100, message = "Facility must be at most 100 characters") String> facilities;
+
+    private String policies;
+
+    @Size(max = 10, message = "At most 10 images are allowed")
+    private List<@NotBlank(message = "Image URL must not be blank")
+                 @Size(max = 1000, message = "Image URL must be at most 1000 characters") String> imageUrls;
 
 }

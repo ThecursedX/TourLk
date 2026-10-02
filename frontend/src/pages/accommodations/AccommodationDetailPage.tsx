@@ -8,6 +8,7 @@ import ReserveRoomForm from '../../components/accommodations/ReserveRoomForm'
 import RoomCard from '../../components/accommodations/RoomCard'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import ImageGallery from '../../components/ui/ImageGallery'
 import ReviewList from '../../components/reviews/ReviewList'
 import { formatProvince } from '../../types/destination'
 import type { AccommodationResponseDto } from '../../types/accommodation'
@@ -42,7 +43,10 @@ export default function AccommodationDetailPage() {
   if (error) return <p className="text-red-600">{error}</p>
   if (!accommodation) return null
 
-  const canReserve = accommodation.status === 'ACTIVE' && isAuthenticated && user?.role === 'TOURIST'
+  // FULLY_BOOKED only means tonight is full; later dates can still be reserved (the server checks
+  // per-date availability). TEMPORARILY_UNAVAILABLE stays visible but is not bookable.
+  const bookable = accommodation.status === 'ACTIVE' || accommodation.status === 'FULLY_BOOKED'
+  const canReserve = bookable && isAuthenticated && user?.role === 'TOURIST'
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,9 +68,44 @@ export default function AccommodationDetailPage() {
             <span className="text-slate-400"> · {accommodation.starRating}★</span>
           )}
         </p>
+        {accommodation.address && <p className="text-sm text-slate-600">{accommodation.address}</p>}
+        <ImageGallery urls={accommodation.imageUrls ?? []} alt={accommodation.name} />
         <p className="whitespace-pre-line text-slate-700">{accommodation.description}</p>
+        {(accommodation.facilities?.length ?? 0) > 0 && (
+          <div>
+            <h2 className="mb-1 text-xs uppercase text-slate-500">Facilities</h2>
+            <div className="flex flex-wrap gap-2">
+              {accommodation.facilities.map((facility) => (
+                <span key={facility} className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700">
+                  {facility}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {accommodation.policies && (
+          <div>
+            <h2 className="mb-1 text-xs uppercase text-slate-500">Policies</h2>
+            <p className="whitespace-pre-line text-sm text-slate-700">{accommodation.policies}</p>
+          </div>
+        )}
         <p className="text-xs text-slate-500">Listed by {accommodation.ownerName}</p>
       </Card>
+
+      {accommodation.status === 'TEMPORARILY_UNAVAILABLE' && (
+        <Card>
+          <p className="text-slate-700">
+            This property is temporarily unavailable and cannot be booked right now. Please check back later.
+          </p>
+        </Card>
+      )}
+      {accommodation.status === 'FULLY_BOOKED' && (
+        <Card>
+          <p className="text-slate-700">
+            This property is fully booked tonight. You can still reserve for later dates if rooms are free.
+          </p>
+        </Card>
+      )}
 
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Room types</h2>

@@ -54,6 +54,12 @@ public class VehicleController {
         return ResponseEntity.ok(vehicleService.updateVehicle(id, request, currentUser(authentication)));
     }
 
+    @PutMapping("/{id}/submit")
+    @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
+    public ResponseEntity<VehicleResponseDto> submit(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(vehicleService.submitForVerification(id, currentUser(authentication)));
+    }
+
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<VehicleResponseDto> approve(@PathVariable Long id) {
@@ -70,6 +76,12 @@ public class VehicleController {
     @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
     public ResponseEntity<VehicleResponseDto> deactivate(@PathVariable Long id, Authentication authentication) {
         return ResponseEntity.ok(vehicleService.deactivateVehicle(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/maintenance")
+    @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
+    public ResponseEntity<VehicleResponseDto> startMaintenance(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(vehicleService.startMaintenance(id, currentUser(authentication)));
     }
 
     @PutMapping("/{id}/reactivate")

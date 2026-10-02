@@ -1,8 +1,10 @@
 package com.tourlk.controller;
 
 import com.tourlk.dto.AuthResponseDto;
+import com.tourlk.dto.ForgotPasswordRequestDto;
 import com.tourlk.dto.LoginRequestDto;
 import com.tourlk.dto.RegisterRequestDto;
+import com.tourlk.dto.ResetPasswordRequestDto;
 import com.tourlk.service.AuthService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -34,6 +36,17 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequestDto request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<AuthResponseDto> resetPassword(@Valid @RequestBody ResetPasswordRequestDto request) {
+        return ResponseEntity.ok(authService.resetPassword(request));
     }
 
 }

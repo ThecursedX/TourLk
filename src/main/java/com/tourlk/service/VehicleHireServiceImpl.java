@@ -6,6 +6,7 @@ import com.tourlk.dto.VehicleSummaryDto;
 import com.tourlk.entity.User;
 import com.tourlk.entity.Vehicle;
 import com.tourlk.entity.VehicleHire;
+import com.tourlk.enums.NotificationType;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.VehicleHireStatus;
 import com.tourlk.enums.VehicleStatus;
@@ -48,6 +49,7 @@ public class VehicleHireServiceImpl implements VehicleHireService {
 
     private final VehicleHireRepository vehicleHireRepository;
     private final VehicleRepository vehicleRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -56,7 +58,7 @@ public class VehicleHireServiceImpl implements VehicleHireService {
 
         Vehicle vehicle = getLockedVehicle(request.getVehicleId());
 
-        if (vehicle.getStatus() != VehicleStatus.ACTIVE) {
+        if (vehicle.getStatus() != VehicleStatus.AVAILABLE && vehicle.getStatus() != VehicleStatus.BOOKED) {
             throw new BadRequestException("This vehicle is not currently available for hire");
         }
 
@@ -76,7 +78,11 @@ public class VehicleHireServiceImpl implements VehicleHireService {
                 .status(VehicleHireStatus.PENDING)
                 .build();
 
-        return toResponse(vehicleHireRepository.save(hire));
+        VehicleHire saved = vehicleHireRepository.save(hire);
+        notifyUser(vehicle.getDriver(), currentUser, NotificationType.VEHICLE_HIRE_REQUESTED, "New hire request",
+                currentUser.getName() + " requested " + describe(vehicle) + " from " + saved.getStartDate()
+                        + " to " + saved.getEndDate() + ".", "/vehicles/owner/hires");
+        return toResponse(saved);
     }
 
     @Override
@@ -85,7 +91,7 @@ public class VehicleHireServiceImpl implements VehicleHireService {
         VehicleHire hire = getEntity(id);
         Vehicle vehicle = getLockedVehicle(hire.getVehicle().getId());
         assertOwnerOrAdmin(vehicle, currentUser);
-        return doConfirm(hire, vehicle);
+        return doConfirm(hire, vehicle, currentUser);
     }
 
     @Override
@@ -93,15 +99,23 @@ public class VehicleHireServiceImpl implements VehicleHireService {
     public VehicleHireResponseDto confirmHireAfterPayment(Long id) {
         VehicleHire hire = getEntity(id);
         Vehicle vehicle = getLockedVehicle(hire.getVehicle().getId());
-        return doConfirm(hire, vehicle);
+        return doConfirm(hire, vehicle, null);
     }
 
-    private VehicleHireResponseDto doConfirm(VehicleHire hire, Vehicle vehicle) {
+    /** {@code actor} is the owner/admin who confirmed, or null when a successful payment confirmed it. */
+    private VehicleHireResponseDto doConfirm(VehicleHire hire, Vehicle vehicle, User actor) {
         assertStatus(hire, VehicleHireStatus.PENDING, "confirmed");
         assertAvailability(vehicle, hire.getStartDate(), hire.getEndDate());
 
         hire.setStatus(VehicleHireStatus.CONFIRMED);
-        return toResponse(vehicleHireRepository.save(hire));
+        VehicleHire saved = vehicleHireRepository.save(hire);
+        notifyUser(saved.getTourist(), actor, NotificationType.VEHICLE_HIRE_CONFIRMED, "Hire confirmed",
+                "Your hire of " + describe(vehicle) + " from " + saved.getStartDate() + " to " + saved.getEndDate()
+                        + " is confirmed.", "/hires/mine");
+        notifyUser(vehicle.getDriver(), actor, NotificationType.VEHICLE_HIRE_CONFIRMED, "Hire confirmed",
+                describe(vehicle) + " is booked from " + saved.getStartDate() + " to " + saved.getEndDate() + ".",
+                "/vehicles/owner/hires");
+        return toResponse(saved);
     }
 
     @Override
@@ -115,7 +129,14 @@ public class VehicleHireServiceImpl implements VehicleHireService {
         }
 
         hire.setStatus(VehicleHireStatus.CANCELLED);
-        return toResponse(vehicleHireRepository.save(hire));
+        VehicleHire saved = vehicleHireRepository.save(hire);
+        boolean byTourist = saved.getTourist().getId().equals(currentUser.getId());
+        notifyUser(byTourist ? saved.getVehicle().getDriver() : saved.getTourist(), currentUser,
+                NotificationType.VEHICLE_HIRE_CANCELLED, "Hire cancelled",
+                "The hire of " + describe(saved.getVehicle()) + " from " + saved.getStartDate() + " to "
+                        + saved.getEndDate() + " was cancelled.",
+                byTourist ? "/vehicles/owner/hires" : "/hires/mine");
+        return toResponse(saved);
     }
 
     @Override
@@ -126,7 +147,11 @@ public class VehicleHireServiceImpl implements VehicleHireService {
         assertStatus(hire, VehicleHireStatus.CONFIRMED, "completed");
 
         hire.setStatus(VehicleHireStatus.COMPLETED);
-        return toResponse(vehicleHireRepository.save(hire));
+        VehicleHire saved = vehicleHireRepository.save(hire);
+        notifyUser(saved.getTourist(), currentUser, NotificationType.VEHICLE_HIRE_COMPLETED, "Hire completed",
+                "Your hire of " + describe(saved.getVehicle()) + " is complete. How was it? Leave a review.",
+                "/hires/mine");
+        return toResponse(saved);
     }
 
     @Override
@@ -172,6 +197,18 @@ public class VehicleHireServiceImpl implements VehicleHireService {
         if (overlapping) {
             throw new VehicleUnavailableException(
                     "This vehicle is already booked for part of " + startDate + " to " + endDate);
+        }
+    }
+
+    private String describe(Vehicle vehicle) {
+        return vehicle.getMake() + " " + vehicle.getModel();
+    }
+
+    /** In-app notice; skipped when the recipient is the person who just did it. */
+    private void notifyUser(User recipient, User actor, NotificationType type, String title, String message,
+                            String link) {
+        if (actor == null || !recipient.getId().equals(actor.getId())) {
+            notificationService.notify(recipient, type, title, message, link);
         }
     }
 

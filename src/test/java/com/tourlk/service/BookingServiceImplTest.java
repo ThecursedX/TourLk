@@ -1,37 +1,51 @@
 package com.tourlk.service;
 
+import com.tourlk.config.CancellationPolicyProperties;
 import com.tourlk.dto.BookingRequestDto;
 import com.tourlk.dto.BookingResponseDto;
+import com.tourlk.dto.CancellationPreviewResponseDto;
 import com.tourlk.dto.RescheduleRequestDto;
 import com.tourlk.entity.Booking;
 import com.tourlk.entity.Destination;
+import com.tourlk.entity.PackageDeparture;
+import com.tourlk.entity.Payment;
 import com.tourlk.entity.TourPackage;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.DestinationStatus;
 import com.tourlk.enums.PackageStatus;
+import com.tourlk.enums.PayableType;
+import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.CapacityExceededException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.BookingRepository;
+import com.tourlk.repo.PackageDepartureRepository;
+import com.tourlk.repo.PaymentRepository;
 import com.tourlk.repo.TourPackageRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,6 +61,17 @@ class BookingServiceImplTest {
     private BookingRepository bookingRepository;
     @Mock
     private TourPackageRepository tourPackageRepository;
+    @Mock
+    private PackageDepartureRepository departureRepository;
+    @Mock
+    private PaymentRepository paymentRepository;
+    @Mock
+    private RefundGateway refundGateway;
+    @Mock
+    private NotificationService notificationService;
+    /** Real policy (7 / 3 days, 50%) — it's pure logic, nothing to mock. */
+    @Spy
+    private CancellationPolicy cancellationPolicy = new CancellationPolicy(new CancellationPolicyProperties(7, 3, 50));
 
     @InjectMocks
     private BookingServiceImpl bookingService;
@@ -54,6 +79,7 @@ class BookingServiceImplTest {
     private User tourist;
     private User otherTourist;
     private User admin;
+    private User guide;
     private TourPackage activePackage;
 
     @BeforeEach
@@ -61,11 +87,13 @@ class BookingServiceImplTest {
         tourist = User.builder().id(1L).name("Tess").email("tess@example.com").role(Role.TOURIST).build();
         otherTourist = User.builder().id(2L).name("Otto").email("otto@example.com").role(Role.TOURIST).build();
         admin = User.builder().id(9L).name("Amy Admin").email("admin@example.com").role(Role.ADMIN).build();
+        guide = User.builder().id(3L).name("Gina Guide").email("gina@example.com").role(Role.GUIDE).build();
         activePackage = TourPackage.builder()
                 .id(100L).title("Hill Country")
                 .destination(Destination.builder()
-                        .id(1L).name("Kandy").region("Central Province").status(DestinationStatus.ACTIVE).build())
+                        .id(1L).name("Kandy").region("Central Province").status(DestinationStatus.PUBLISHED).build())
                 .price(new BigDecimal("120.00")).maxCapacity(10).status(PackageStatus.ACTIVE)
+                .createdBy(guide)
                 .build();
     }
 
@@ -73,6 +101,14 @@ class BookingServiceImplTest {
         return Booking.builder()
                 .id(5L).tourist(owner).tourPackage(activePackage)
                 .travelDate(LocalDate.now().plusDays(30)).numberOfTravelers(2)
+                .status(status)
+                .build();
+    }
+
+    private Payment payment(PaymentStatus status, String amount) {
+        return Payment.builder()
+                .id(55L).payer(tourist).payableType(PayableType.BOOKING).payableId(5L)
+                .amount(new BigDecimal(amount)).currency("usd").stripePaymentIntentId("pi_1")
                 .status(status)
                 .build();
     }
@@ -200,6 +236,188 @@ class BookingServiceImplTest {
                 .isInstanceOf(InvalidStatusTransitionException.class);
     }
 
+    @Test
+    void cancelBooking_farEnoughOut_refundsInFull() {
+        Booking active = booking(BookingStatus.CONFIRMED, tourist);
+        active.setTravelDate(LocalDate.now().plusDays(30)); // >= 7 days -> 100%
+        Payment succeeded = payment(PaymentStatus.SUCCEEDED, "200.00");
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of(succeeded));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(5L, tourist);
+
+        verify(refundGateway).refund(succeeded, new BigDecimal("200.00"));
+    }
+
+    @Test
+    void cancelBooking_withinPartialWindow_refundsHalf() {
+        Booking active = booking(BookingStatus.CONFIRMED, tourist);
+        active.setTravelDate(LocalDate.now().plusDays(4)); // 3-6 days -> 50%
+        Payment succeeded = payment(PaymentStatus.SUCCEEDED, "200.00");
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of(succeeded));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(5L, tourist);
+
+        verify(refundGateway).refund(succeeded, new BigDecimal("100.00"));
+    }
+
+    @Test
+    void cancelBooking_tooCloseToTravel_noRefundIssued() {
+        Booking active = booking(BookingStatus.CONFIRMED, tourist);
+        active.setTravelDate(LocalDate.now().plusDays(1)); // < 3 days -> 0%
+        Payment succeeded = payment(PaymentStatus.SUCCEEDED, "200.00");
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of(succeeded));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(5L, tourist);
+
+        verify(refundGateway, never()).refund(any(), any());
+    }
+
+    @Test
+    void cancelBooking_uncompletedPayment_isMarkedCancelled() {
+        Booking active = booking(BookingStatus.PENDING, tourist);
+        Payment pending = payment(PaymentStatus.PENDING, "200.00");
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of(pending));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(5L, tourist);
+
+        verify(refundGateway).cancelUncompletedPayment(pending);
+        verify(refundGateway, never()).refund(any(), any());
+    }
+
+    // ------------------------------------------------------------------
+    // getCancellationPreview
+    // ------------------------------------------------------------------
+
+    @Test
+    void getCancellationPreview_farEnoughOut_previews100PercentOfSucceededPayment() {
+        Booking active = booking(BookingStatus.CONFIRMED, tourist);
+        active.setTravelDate(LocalDate.now().plusDays(30));
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of(payment(PaymentStatus.SUCCEEDED, "200.00")));
+
+        CancellationPreviewResponseDto preview = bookingService.getCancellationPreview(5L, tourist);
+
+        assertThat(preview.getRefundPercent()).isEqualTo(100);
+        assertThat(preview.getRefundAmount()).isEqualByComparingTo("200.00");
+        assertThat(preview.isHasPayment()).isTrue();
+    }
+
+    @Test
+    void getCancellationPreview_noSucceededPayment_zeroRefundButRuleStillShown() {
+        Booking active = booking(BookingStatus.PENDING, tourist);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(active));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L))
+                .thenReturn(List.of());
+
+        CancellationPreviewResponseDto preview = bookingService.getCancellationPreview(5L, tourist);
+
+        assertThat(preview.isHasPayment()).isFalse();
+        assertThat(preview.getRefundAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(preview.getRuleText()).isNotBlank();
+    }
+
+    @Test
+    void getCancellationPreview_byUnrelatedTourist_throwsAccessDenied() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+
+        assertThatThrownBy(() -> bookingService.getCancellationPreview(5L, otherTourist))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ------------------------------------------------------------------
+    // rejectBooking
+    // ------------------------------------------------------------------
+
+    @Test
+    void rejectBooking_pendingByPackageOwner_setsRejectedWithReason() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L)).thenReturn(List.of());
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDto result = bookingService.rejectBooking(5L, "No availability", guide);
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.REJECTED);
+        assertThat(result.getRejectionReason()).isEqualTo("No availability");
+    }
+
+    @Test
+    void rejectBooking_pendingByAdmin_setsRejected() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+        when(paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, 5L)).thenReturn(List.of());
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(bookingService.rejectBooking(5L, "Not available", admin).getStatus())
+                .isEqualTo(BookingStatus.REJECTED);
+    }
+
+    @Test
+    void rejectBooking_byUnrelatedGuide_throwsAccessDenied() {
+        User otherGuide = User.builder().id(4L).name("Gary").role(Role.GUIDE).build();
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+
+        assertThatThrownBy(() -> bookingService.rejectBooking(5L, "reason", otherGuide))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectBooking_blankReason_throwsBadRequest() {
+        assertThatThrownBy(() -> bookingService.rejectBooking(5L, "  ", guide))
+                .isInstanceOf(BadRequestException.class);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectBooking_notPending_throwsInvalidStatusTransition() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.CONFIRMED, tourist)));
+
+        assertThatThrownBy(() -> bookingService.rejectBooking(5L, "reason", guide))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------------
+    // getBookingsByPackage
+    // ------------------------------------------------------------------
+
+    @Test
+    void getBookingsByPackage_byOwner_returnsBookings() {
+        when(tourPackageRepository.findById(100L)).thenReturn(Optional.of(activePackage));
+        when(bookingRepository.findByTourPackageId(100L)).thenReturn(List.of(booking(BookingStatus.PENDING, tourist)));
+
+        assertThat(bookingService.getBookingsByPackage(100L, guide)).hasSize(1);
+    }
+
+    @Test
+    void getBookingsByPackage_byAdmin_returnsBookings() {
+        when(tourPackageRepository.findById(100L)).thenReturn(Optional.of(activePackage));
+        when(bookingRepository.findByTourPackageId(100L)).thenReturn(List.of());
+
+        assertThat(bookingService.getBookingsByPackage(100L, admin)).isEmpty();
+    }
+
+    @Test
+    void getBookingsByPackage_byUnrelatedGuide_throwsAccessDenied() {
+        User otherGuide = User.builder().id(4L).name("Gary").role(Role.GUIDE).build();
+        when(tourPackageRepository.findById(100L)).thenReturn(Optional.of(activePackage));
+
+        assertThatThrownBy(() -> bookingService.getBookingsByPackage(100L, otherGuide))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
     // ------------------------------------------------------------------
     // completeBooking
     // ------------------------------------------------------------------
@@ -276,5 +494,191 @@ class BookingServiceImplTest {
 
         assertThatThrownBy(() -> bookingService.getBookingById(404L, tourist))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ------------------------------------------------------------------
+    // Package departures
+    // ------------------------------------------------------------------
+
+    private PackageDeparture departureOn(LocalDate date, int seatsTotal) {
+        return PackageDeparture.builder().id(70L).tourPackage(activePackage).departureDate(date).seatsTotal(seatsTotal)
+                .build();
+    }
+
+    @Test
+    void createBooking_packageWithDepartures_dateNotADeparture_throwsBadRequest() {
+        LocalDate offSchedule = LocalDate.now().plusDays(31);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, offSchedule)).thenReturn(Optional.empty());
+        when(departureRepository.existsByTourPackageId(100L)).thenReturn(true);
+
+        BookingRequestDto request = new BookingRequestDto(100L, offSchedule, 2, null);
+
+        assertThatThrownBy(() -> bookingService.createBooking(request, tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("no departure on " + offSchedule);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void createBooking_onDeparture_withinSeats_savesPendingBooking() {
+        LocalDate departureDate = LocalDate.now().plusDays(30);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, departureDate))
+                .thenReturn(Optional.of(departureOn(departureDate, 4)));
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(eq(100L), eq(departureDate), any()))
+                .thenReturn(2);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDto result =
+                bookingService.createBooking(new BookingRequestDto(100L, departureDate, 2, null), tourist); // 2 + 2 <= 4
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.PENDING);
+        assertThat(result.getTravelDate()).isEqualTo(departureDate);
+    }
+
+    @Test
+    void createBooking_onDeparture_seatLimitIsDepartureSeatsNotPackageCapacity() {
+        LocalDate departureDate = LocalDate.now().plusDays(30);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage)); // maxCapacity 10
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, departureDate))
+                .thenReturn(Optional.of(departureOn(departureDate, 4)));
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(eq(100L), eq(departureDate), any()))
+                .thenReturn(3);
+
+        BookingRequestDto request = new BookingRequestDto(100L, departureDate, 2, null); // 3 + 2 > 4, though < 10
+
+        assertThatThrownBy(() -> bookingService.createBooking(request, tourist))
+                .isInstanceOf(CapacityExceededException.class)
+                .hasMessageContaining("Only 1 spot(s) left");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void createBooking_packageWithoutDepartures_anyDateUsesMaxCapacity() {
+        LocalDate anyDate = LocalDate.now().plusDays(45);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.existsByTourPackageId(100L)).thenReturn(false);
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(8);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDto result =
+                bookingService.createBooking(new BookingRequestDto(100L, anyDate, 2, null), tourist); // 8 + 2 <= 10
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.PENDING);
+    }
+
+    @Test
+    void createBooking_locksPackageBeforeCheckingDepartures() {
+        LocalDate departureDate = LocalDate.now().plusDays(30);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, departureDate))
+                .thenReturn(Optional.of(departureOn(departureDate, 4)));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.createBooking(new BookingRequestDto(100L, departureDate, 1, null), tourist);
+
+        InOrder order = inOrder(tourPackageRepository, departureRepository, bookingRepository);
+        order.verify(tourPackageRepository).findByIdForUpdate(100L);
+        order.verify(departureRepository).findByTourPackageIdAndDepartureDate(100L, departureDate);
+        order.verify(bookingRepository).sumTravelersByPackageAndDateAndStatusIn(eq(100L), eq(departureDate), any());
+        order.verify(bookingRepository).save(any(Booking.class));
+    }
+
+    @Test
+    void confirmBooking_legacyDateNotADeparture_stillConfirmsAgainstMaxCapacity() {
+        Booking pending = booking(BookingStatus.PENDING, tourist);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(pending));
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, pending.getTravelDate()))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(bookingService.confirmBooking(5L).getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verify(departureRepository, never()).existsByTourPackageId(any());
+    }
+
+    @Test
+    void requestReschedule_packageWithDepartures_newDateNotADeparture_throwsBadRequest() {
+        Booking confirmed = booking(BookingStatus.CONFIRMED, tourist);
+        LocalDate offSchedule = LocalDate.now().plusDays(60);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(confirmed));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, offSchedule)).thenReturn(Optional.empty());
+        when(departureRepository.existsByTourPackageId(100L)).thenReturn(true);
+
+        assertThatThrownBy(() -> bookingService.requestReschedule(5L, new RescheduleRequestDto(offSchedule), tourist))
+                .isInstanceOf(BadRequestException.class);
+        assertThat(confirmed.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void requestReschedule_toADeparture_movesToRescheduleRequested() {
+        Booking confirmed = booking(BookingStatus.CONFIRMED, tourist);
+        LocalDate departureDate = LocalDate.now().plusDays(60);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(confirmed));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, departureDate))
+                .thenReturn(Optional.of(departureOn(departureDate, 10)));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDto result =
+                bookingService.requestReschedule(5L, new RescheduleRequestDto(departureDate), tourist);
+
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.RESCHEDULE_REQUESTED);
+        assertThat(result.getRequestedTravelDate()).isEqualTo(departureDate);
+    }
+
+    @Test
+    void approveReschedule_departureRemovedSinceRequest_throwsBadRequest() {
+        Booking requested = booking(BookingStatus.RESCHEDULE_REQUESTED, tourist);
+        LocalDate removedDate = LocalDate.now().plusDays(60);
+        requested.setRequestedTravelDate(removedDate);
+        requested.setStatusBeforeReschedule(BookingStatus.CONFIRMED);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(requested));
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(departureRepository.findByTourPackageIdAndDepartureDate(100L, removedDate)).thenReturn(Optional.empty());
+        when(departureRepository.existsByTourPackageId(100L)).thenReturn(true);
+
+        assertThatThrownBy(() -> bookingService.approveReschedule(5L))
+                .isInstanceOf(BadRequestException.class);
+        assertThat(requested.getStatus()).isEqualTo(BookingStatus.RESCHEDULE_REQUESTED);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------------
+    // totalPrice
+    // ------------------------------------------------------------------
+
+    @Test
+    void createBooking_storesTotalPriceFromCurrentPackagePrice() {
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage)); // 120.00
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDto result = bookingService.createBooking(
+                new BookingRequestDto(100L, LocalDate.now().plusDays(30), 3, null), tourist);
+
+        ArgumentCaptor<Booking> saved = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).save(saved.capture());
+        assertThat(saved.getValue().getTotalPrice()).isEqualByComparingTo("360.00");
+        assertThat(result.getTotalPrice()).isEqualByComparingTo("360.00");
+    }
+
+    @Test
+    void storedTotalPrice_isUnaffectedByLaterPackagePriceChange() {
+        Booking existing = booking(BookingStatus.PENDING, tourist); // 2 travelers
+        existing.setTotalPrice(new BigDecimal("240.00"));
+        activePackage.setPrice(new BigDecimal("999.00"));
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(existing));
+
+        assertThat(bookingService.getBookingById(5L, tourist).getTotalPrice()).isEqualByComparingTo("240.00");
+    }
+
+    @Test
+    void legacyBookingWithoutTotalPrice_fallsBackToLivePackagePrice() {
+        Booking legacy = booking(BookingStatus.PENDING, tourist); // totalPrice null, 2 travelers
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(legacy));
+
+        assertThat(bookingService.getBookingById(5L, tourist).getTotalPrice()).isEqualByComparingTo("240.00");
     }
 }

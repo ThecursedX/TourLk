@@ -1,6 +1,8 @@
 package com.tourlk.service;
 
 import com.tourlk.dto.AuthResponseDto;
+import com.tourlk.dto.ChangePasswordRequestDto;
+import com.tourlk.dto.LicenceSubmitRequestDto;
 import com.tourlk.dto.UpdateProfileRequestDto;
 import com.tourlk.dto.UserResponseDto;
 import com.tourlk.entity.User;
@@ -32,6 +34,22 @@ public interface UserService {
      */
     AuthResponseDto updateProfile(User currentUser, UpdateProfileRequestDto request);
 
+    /**
+     * Changes the caller's own password after verifying the current one.
+     *
+     * @throws com.tourlk.exception.BadRequestException if currentPassword doesn't match
+     */
+    void changePassword(User currentUser, ChangePasswordRequestDto request);
+
+    /**
+     * Deactivates the caller's own account after re-checking their password.
+     * The account can no longer sign in; only an admin can reactivate it.
+     *
+     * @throws com.tourlk.exception.BadRequestException if the password is wrong, or the caller is
+     *                                                  the last active admin
+     */
+    void deactivateOwnAccount(User currentUser, String password);
+
     // ------------------------------------------------------------------
     // Admin user management
     // ------------------------------------------------------------------
@@ -52,5 +70,25 @@ public interface UserService {
      * (bookings, listings, reviews...) still reference.
      */
     void deleteUser(Long id, User currentUser);
+
+    // ------------------------------------------------------------------
+    // Licence verification (GUIDE / DRIVER)
+    // ------------------------------------------------------------------
+
+    /**
+     * Submits (or resubmits) the caller's licence details for admin review.
+     *
+     * @throws com.tourlk.exception.BadRequestException if the caller isn't a GUIDE or DRIVER
+     */
+    UserResponseDto submitLicence(User currentUser, LicenceSubmitRequestDto request);
+
+    /** Every GUIDE/DRIVER with a licence currently awaiting review. */
+    List<UserResponseDto> getPendingLicences();
+
+    /** @throws com.tourlk.exception.InvalidStatusTransitionException if the licence isn't PENDING */
+    UserResponseDto verifyLicence(Long userId, User admin);
+
+    /** @throws com.tourlk.exception.InvalidStatusTransitionException if the licence isn't PENDING */
+    UserResponseDto rejectLicence(Long userId, String reason, User admin);
 
 }

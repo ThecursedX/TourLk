@@ -4,6 +4,7 @@ import com.tourlk.dto.RatingSummaryDto;
 import com.tourlk.dto.ReviewResponseDto;
 import com.tourlk.entity.User;
 import com.tourlk.enums.Role;
+import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.security.JwtFilter;
 import com.tourlk.service.ReviewService;
@@ -212,14 +213,14 @@ class ReviewControllerTest {
         mvc.perform(delete("/api/reviews/5/reply")).andExpect(status().isOk());
     }
 
-    // --- GET /api/reviews/admin, PUT /{id}/flag|unflag : hasRole('ADMIN') ---
+    // --- GET /api/reviews/admin, PUT /{id}/report|unreport|hide|unhide : hasRole('ADMIN') ---
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void adminList_asAdmin_returnsOk() throws Exception {
-        when(reviewService.getAllReviewsForAdmin(true)).thenReturn(List.of());
+        when(reviewService.getAllReviewsForAdmin(ReviewStatus.REPORTED)).thenReturn(List.of());
 
-        mvc.perform(get("/api/reviews/admin").param("flaggedOnly", "true")).andExpect(status().isOk());
+        mvc.perform(get("/api/reviews/admin").param("status", "REPORTED")).andExpect(status().isOk());
     }
 
     @Test
@@ -231,16 +232,31 @@ class ReviewControllerTest {
 
     @Test
     @WithMockUser(roles = "ADMIN")
-    void flag_asAdmin_returnsOk() throws Exception {
-        when(reviewService.flagReview(5L)).thenReturn(sample());
+    void report_asAdmin_returnsOk() throws Exception {
+        when(reviewService.reportReview(5L)).thenReturn(sample());
 
-        mvc.perform(put("/api/reviews/5/flag")).andExpect(status().isOk());
+        mvc.perform(put("/api/reviews/5/report")).andExpect(status().isOk());
     }
 
     @Test
     @WithMockUser(roles = "TOURIST")
-    void unflag_asTourist_isForbidden() throws Exception {
-        mvc.perform(put("/api/reviews/5/unflag")).andExpect(status().isForbidden());
+    void unreport_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/reviews/5/unreport")).andExpect(status().isForbidden());
+        verifyNoInteractions(reviewService);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void hide_asAdmin_returnsOk() throws Exception {
+        when(reviewService.hideReview(5L)).thenReturn(sample());
+
+        mvc.perform(put("/api/reviews/5/hide")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void hide_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/reviews/5/hide")).andExpect(status().isForbidden());
         verifyNoInteractions(reviewService);
     }
 }

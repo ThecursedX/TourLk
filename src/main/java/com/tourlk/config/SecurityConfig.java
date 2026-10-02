@@ -57,6 +57,7 @@ public class SecurityConfig {
             "/api/accommodations/*",
             "/api/packages",
             "/api/packages/*",
+            "/api/packages/*/departures",
             "/api/vehicles",
             "/api/vehicles/*",
             "/api/reviews",

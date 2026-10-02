@@ -1,6 +1,10 @@
 package com.tourlk.controller;
 
 import com.tourlk.dto.AuthResponseDto;
+import com.tourlk.dto.ChangePasswordRequestDto;
+import com.tourlk.dto.DeactivateAccountRequestDto;
+import com.tourlk.dto.LicenceSubmitRequestDto;
+import com.tourlk.dto.RejectLicenceRequestDto;
 import com.tourlk.dto.UpdateProfileRequestDto;
 import com.tourlk.dto.UserResponseDto;
 import com.tourlk.entity.User;
@@ -48,6 +52,23 @@ public class UserController {
         return ResponseEntity.ok(userService.updateProfile(currentUser(authentication), request));
     }
 
+    @PutMapping("/me/password")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequestDto request,
+                                                Authentication authentication) {
+        userService.changePassword(currentUser(authentication), request);
+        return ResponseEntity.ok().build();
+    }
+
+    /** Self-service deactivation; the caller must re-enter their password. */
+    @PutMapping("/me/deactivate")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Void> deactivateMe(@Valid @RequestBody DeactivateAccountRequestDto request,
+                                              Authentication authentication) {
+        userService.deactivateOwnAccount(currentUser(authentication), request.getPassword());
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserResponseDto>> list(@RequestParam(required = false) String search) {
@@ -77,6 +98,37 @@ public class UserController {
     public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
         userService.deleteUser(id, currentUser(authentication));
         return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------------
+    // Licence verification (GUIDE / DRIVER submit, ADMIN reviews)
+    // ------------------------------------------------------------------
+
+    @PutMapping("/me/licence")
+    @PreAuthorize("hasAnyRole('GUIDE','DRIVER')")
+    public ResponseEntity<UserResponseDto> submitLicence(@Valid @RequestBody LicenceSubmitRequestDto request,
+                                                          Authentication authentication) {
+        return ResponseEntity.ok(userService.submitLicence(currentUser(authentication), request));
+    }
+
+    @GetMapping("/licences/pending")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<UserResponseDto>> pendingLicences() {
+        return ResponseEntity.ok(userService.getPendingLicences());
+    }
+
+    @PutMapping("/{id}/licence/verify")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponseDto> verifyLicence(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(userService.verifyLicence(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/licence/reject")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponseDto> rejectLicence(@PathVariable Long id,
+                                                          @Valid @RequestBody RejectLicenceRequestDto request,
+                                                          Authentication authentication) {
+        return ResponseEntity.ok(userService.rejectLicence(id, request.getReason(), currentUser(authentication)));
     }
 
     private User currentUser(Authentication authentication) {

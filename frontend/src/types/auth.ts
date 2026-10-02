@@ -34,6 +34,17 @@ export interface User {
   role: Role
 }
 
+// Matches com.tourlk.dto.ForgotPasswordRequestDto
+export interface ForgotPasswordRequestDto {
+  email: string
+}
+
+// Matches com.tourlk.dto.ResetPasswordRequestDto
+export interface ResetPasswordRequestDto {
+  token: string
+  newPassword: string
+}
+
 // Matches com.tourlk.exception.ErrorResponse
 export interface ErrorResponse {
   timestamp: string
@@ -42,4 +53,7 @@ export interface ErrorResponse {
   message: string
   path: string
   fieldErrors?: Record<string, string>
+  /** Machine-readable reason for errors the client handles, e.g. 'CONFIRMATION_REQUIRED'. */
+  code?: string
+  details?: Record<string, unknown>
 }

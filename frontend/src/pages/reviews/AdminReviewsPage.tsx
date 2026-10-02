@@ -1,18 +1,25 @@
 import { useEffect, useState } from 'react'
 import {
   deleteReview,
-  flagReview,
   getAllReviewsForAdmin,
+  hideReview,
   removeGuideReply,
-  unflagReview,
+  reportReview,
+  unhideReview,
+  unreportReview,
 } from '../../api/reviewApi'
 import ReviewCard from '../../components/reviews/ReviewCard'
+import ReviewEditHistoryModal from '../../components/reviews/ReviewEditHistoryModal'
 import Button from '../../components/ui/Button'
-import type { ReviewResponseDto } from '../../types/review'
+import type { ReviewResponseDto, ReviewStatus } from '../../types/review'
 
-const TABS: { label: string; value: boolean | undefined }[] = [
+const TABS: { label: string; value: ReviewStatus | undefined }[] = [
   { label: 'All', value: undefined },
-  { label: 'Flagged', value: true },
+  { label: 'Published', value: 'PUBLISHED' },
+  { label: 'Edited', value: 'EDITED' },
+  { label: 'Reported', value: 'REPORTED' },
+  { label: 'Hidden', value: 'HIDDEN' },
+  { label: 'Deleted', value: 'DELETED' },
 ]
 
 export default function AdminReviewsPage() {
@@ -21,9 +28,10 @@ export default function AdminReviewsPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
-  const [flaggedOnly, setFlaggedOnly] = useState<boolean | undefined>(undefined)
+  const [status, setStatus] = useState<ReviewStatus | undefined>(undefined)
+  const [historyId, setHistoryId] = useState<number | null>(null)
 
-  const load = (filter?: boolean) => {
+  const load = (filter?: ReviewStatus) => {
     setLoading(true)
     setError(null)
     getAllReviewsForAdmin(filter)
@@ -33,9 +41,9 @@ export default function AdminReviewsPage() {
   }
 
   useEffect(() => {
-    load(flaggedOnly)
+    load(status)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flaggedOnly])
+  }, [status])
 
   const runAction = async (id: number, action: (id: number) => Promise<ReviewResponseDto>) => {
     setActionError(null)
@@ -51,12 +59,12 @@ export default function AdminReviewsPage() {
   }
 
   const handleRemove = async (id: number) => {
-    if (!window.confirm('Permanently remove this review? This cannot be undone.')) return
+    if (!window.confirm('Remove this review? It will be hidden from public view and marked as deleted.')) return
     setActionError(null)
     setBusyId(id)
     try {
       await deleteReview(id)
-      setReviews((prev) => prev.filter((r) => r.id !== id))
+      load(status)
     } catch {
       setActionError('That review could not be removed. Please try again.')
     } finally {
@@ -69,8 +77,8 @@ export default function AdminReviewsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Moderate Reviews</h1>
         <p className="mt-1 text-slate-600">
-          All reviews on the platform. Flagged reviews were caught by the profanity filter and are hidden
-          from public view until you unflag or remove them.
+          All reviews on the platform. Reported reviews were auto-flagged for profanity or reported by an admin.
+          Hidden and deleted reviews are excluded from public listings and rating averages.
         </p>
       </div>
 
@@ -78,8 +86,8 @@ export default function AdminReviewsPage() {
         {TABS.map((tab) => (
           <Button
             key={tab.label}
-            variant={flaggedOnly === tab.value ? 'primary' : 'secondary'}
-            onClick={() => setFlaggedOnly(tab.value)}
+            variant={status === tab.value ? 'primary' : 'secondary'}
+            onClick={() => setStatus(tab.value)}
           >
             {tab.label}
           </Button>
@@ -100,13 +108,22 @@ export default function AdminReviewsPage() {
               review={review}
               footer={
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {review.flagged ? (
-                    <Button disabled={disabled} onClick={() => runAction(review.id, unflagReview)}>
-                      Unflag
+                  {review.status === 'REPORTED' ? (
+                    <Button disabled={disabled} onClick={() => runAction(review.id, unreportReview)}>
+                      Unreport
                     </Button>
                   ) : (
-                    <Button variant="secondary" disabled={disabled} onClick={() => runAction(review.id, flagReview)}>
-                      Flag
+                    <Button variant="secondary" disabled={disabled} onClick={() => runAction(review.id, reportReview)}>
+                      Report
+                    </Button>
+                  )}
+                  {review.status === 'HIDDEN' ? (
+                    <Button disabled={disabled} onClick={() => runAction(review.id, unhideReview)}>
+                      Unhide
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" disabled={disabled} onClick={() => runAction(review.id, hideReview)}>
+                      Hide
                     </Button>
                   )}
                   {review.guideReply && (
@@ -118,15 +135,24 @@ export default function AdminReviewsPage() {
                       Remove Reply
                     </Button>
                   )}
-                  <Button variant="secondary" disabled={disabled} onClick={() => handleRemove(review.id)}>
-                    Remove Review
+                  <Button variant="ghost" onClick={() => setHistoryId(review.id)}>
+                    History
                   </Button>
+                  {review.status !== 'DELETED' && (
+                    <Button variant="secondary" disabled={disabled} onClick={() => handleRemove(review.id)}>
+                      Delete
+                    </Button>
+                  )}
                 </div>
               }
             />
           )
         })}
       </div>
+
+      {historyId !== null && (
+        <ReviewEditHistoryModal reviewId={historyId} onClose={() => setHistoryId(null)} />
+      )}
     </div>
   )
 }

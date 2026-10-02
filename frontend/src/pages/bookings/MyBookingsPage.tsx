@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
-import { cancelBooking, getMyBookings, requestReschedule } from '../../api/bookingApi'
+import { getMyBookings, requestReschedule } from '../../api/bookingApi'
 import { getMyReviews } from '../../api/reviewApi'
 import BookingCard from '../../components/bookings/BookingCard'
+import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
 import ReviewForm from '../../components/reviews/ReviewForm'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -22,6 +23,8 @@ export default function MyBookingsPage() {
 
   const [rescheduleTargetId, setRescheduleTargetId] = useState<number | null>(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
+
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
 
   const [reviews, setReviews] = useState<ReviewResponseDto[]>([])
   const [reviewingId, setReviewingId] = useState<number | null>(null)
@@ -48,19 +51,6 @@ export default function MyBookingsPage() {
         r.reviewableType === 'TOUR_PACKAGE' &&
         (r.sourceBookingId === bookingId || r.reviewableId === tourPackageId),
     )
-
-  const handleCancel = async (id: number) => {
-    setActionError(null)
-    setBusyId(id)
-    try {
-      const updated = await cancelBooking(id)
-      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)))
-    } catch {
-      setActionError('That booking could not be cancelled. Please try again.')
-    } finally {
-      setBusyId(null)
-    }
-  }
 
   const openReschedule = (id: number) => {
     setActionError(null)
@@ -113,6 +103,7 @@ export default function MyBookingsPage() {
         {bookings.map((booking) => {
           const disabled = busyId === booking.id
           const isReschedulingThis = rescheduleTargetId === booking.id
+          const isCancellingThis = cancellingId === booking.id
 
           return (
             <BookingCard
@@ -121,7 +112,7 @@ export default function MyBookingsPage() {
               footer={
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2">
-                    {RESCHEDULABLE.has(booking.status) && !isReschedulingThis && (
+                    {RESCHEDULABLE.has(booking.status) && !isReschedulingThis && !isCancellingThis && (
                       <Button
                         variant="secondary"
                         disabled={disabled}
@@ -130,11 +121,11 @@ export default function MyBookingsPage() {
                         Request Reschedule
                       </Button>
                     )}
-                    {CANCELLABLE.has(booking.status) && (
+                    {CANCELLABLE.has(booking.status) && !isCancellingThis && (
                       <Button
                         variant="secondary"
                         disabled={disabled}
-                        onClick={() => handleCancel(booking.id)}
+                        onClick={() => setCancellingId(booking.id)}
                       >
                         Cancel
                       </Button>
@@ -147,6 +138,16 @@ export default function MyBookingsPage() {
                       </Button>
                     )}
                   </div>
+                  {isCancellingThis && (
+                    <CancelBookingPanel
+                      bookingId={booking.id}
+                      onCancelled={(updated) => {
+                        setBookings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+                        setCancellingId(null)
+                      }}
+                      onClose={() => setCancellingId(null)}
+                    />
+                  )}
                   {reviewingId === booking.id && (
                     <ReviewForm
                       reviewableType="TOUR_PACKAGE"

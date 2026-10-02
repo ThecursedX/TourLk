@@ -36,4 +36,29 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                                  @Param("travelDate") LocalDate travelDate,
                                                  @Param("statuses") Collection<BookingStatus> statuses);
 
+    /**
+     * Active (non-terminal) bookings of a package travelling on or after
+     * {@code fromDate} — the bookings a price/duration/capacity edit would
+     * affect. See {@code TourPackageServiceImpl#updatePackage}.
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.tourPackage.id = :packageId "
+            + "AND b.status NOT IN :terminalStatuses AND b.travelDate >= :fromDate")
+    long countUpcomingActiveBookings(@Param("packageId") Long packageId,
+                                     @Param("fromDate") LocalDate fromDate,
+                                     @Param("terminalStatuses") Collection<BookingStatus> terminalStatuses);
+
+    /**
+     * Counts active (non-terminal) bookings that sit on, or have a pending
+     * reschedule request to, a given package + date. Used to block removing
+     * a package departure that someone is still travelling on.
+     * {@code requestedTravelDate} is only non-null while a reschedule is
+     * pending (approve/reject clear it), and terminal statuses are excluded.
+     */
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.tourPackage.id = :packageId "
+            + "AND b.status NOT IN :terminalStatuses "
+            + "AND (b.travelDate = :date OR b.requestedTravelDate = :date)")
+    long countActiveBookingsOnDate(@Param("packageId") Long packageId,
+                                   @Param("date") LocalDate date,
+                                   @Param("terminalStatuses") Collection<BookingStatus> terminalStatuses);
+
 }

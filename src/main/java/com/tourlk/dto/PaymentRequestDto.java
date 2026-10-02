@@ -32,4 +32,7 @@ public class PaymentRequestDto {
     @Positive(message = "Amount must be a positive number")
     private BigDecimal amount;
 
+    /** Optional: id of a SavedPaymentMethod to charge instead of collecting a new card. */
+    private Long savedPaymentMethodId;
+
 }

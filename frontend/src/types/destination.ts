@@ -1,4 +1,26 @@
-export type DestinationStatus = 'ACTIVE' | 'INACTIVE'
+export type DestinationStatus =
+  | 'DRAFT'
+  | 'PENDING_REVIEW'
+  | 'PUBLISHED'
+  | 'TEMPORARILY_CLOSED'
+  | 'INACTIVE'
+  | 'ARCHIVED'
+
+/** True when both coordinates are present, i.e. the destination can be placed on a map. */
+export function hasCoordinates(d: { latitude?: number | null; longitude?: number | null }): boolean {
+  return typeof d.latitude === 'number' && typeof d.longitude === 'number'
+}
+
+/** OpenStreetMap embed (iframe) URL centred on a marker; no API key or library needed. */
+export function osmEmbedUrl(latitude: number, longitude: number): string {
+  const delta = 0.02
+  const bbox = [longitude - delta, latitude - delta, longitude + delta, latitude + delta].join(',')
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude},${longitude}`
+}
+
+export function osmLinkUrl(latitude: number, longitude: number): string {
+  return `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=14/${latitude}/${longitude}`
+}
 
 // Matches com.tourlk.enums.Province
 export type Province =
@@ -46,6 +68,19 @@ export interface DestinationRequestDto {
   category: string
   bestTimeToVisit?: string
   imageUrls?: string[]
+  openingHours?: string
+  entryFee?: number | null
+  visitorRules?: string
+  latitude?: number | null
+  longitude?: number | null
+  /** On create only: save as DRAFT instead of publishing straight away. */
+  saveAsDraft?: boolean
+}
+
+// Matches com.tourlk.dto.DestinationClosureRequestDto
+export interface DestinationClosureRequestDto {
+  reason: string
+  until?: string
 }
 
 // Matches com.tourlk.dto.DestinationResponseDto
@@ -59,6 +94,16 @@ export interface DestinationResponseDto {
   bestTimeToVisit: string | null
   imageUrls: string[]
   status: DestinationStatus
+  openingHours: string | null
+  entryFee: number | null
+  visitorRules: string | null
+  latitude: number | null
+  longitude: number | null
+  // Set only while TEMPORARILY_CLOSED.
+  closureReason: string | null
+  closureUntil: string | null
+  // Set only on nearby searches.
+  distanceKm: number | null
   // Populated on admin / detail responses; null on lightweight lists.
   activePackageCount: number | null
   activeAccommodationCount: number | null
@@ -80,4 +125,7 @@ export interface DestinationSummary {
 export interface DestinationBrowseParams {
   search?: string
   province?: Province
+  /** "lat,lng"; results come back nearest first with distanceKm filled in. */
+  nearby?: string
+  radiusKm?: number
 }

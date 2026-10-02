@@ -3,10 +3,11 @@ import { NavLink, Outlet } from 'react-router-dom'
 const ADMIN_LINKS = [
   { to: '/admin/destinations', label: 'Destinations' },
   { to: '/admin/users', label: 'Users' },
-  { to: '/admin/packages', label: 'Package Approvals' },
+  { to: '/admin/packages', label: 'Tour Packages' },
   { to: '/admin/bookings', label: 'Bookings' },
   { to: '/admin/accommodations', label: 'Property Approvals' },
   { to: '/admin/vehicles', label: 'Vehicle Approvals' },
+  { to: '/admin/verifications', label: 'Licence Verifications' },
   { to: '/admin/payments', label: 'Payments' },
   { to: '/admin/tickets', label: 'Support Tickets' },
   { to: '/admin/tickets/unassigned', label: 'Unassigned Tickets' },

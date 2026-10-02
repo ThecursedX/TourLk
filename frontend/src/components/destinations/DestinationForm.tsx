@@ -30,6 +30,12 @@ const emptyValues: DestinationRequestDto = {
   category: '',
   bestTimeToVisit: '',
   imageUrls: [],
+  openingHours: '',
+  entryFee: null,
+  visitorRules: '',
+  latitude: null,
+  longitude: null,
+  saveAsDraft: false,
 }
 
 export default function DestinationForm({
@@ -80,9 +86,31 @@ export default function DestinationForm({
     if (values.bestTimeToVisit && values.bestTimeToVisit.length > 200) {
       errors.bestTimeToVisit = 'Best time to visit must be at most 200 characters'
     }
+    if (values.openingHours && values.openingHours.length > 300) {
+      errors.openingHours = 'Opening hours must be at most 300 characters'
+    }
+    if (values.entryFee != null && values.entryFee < 0) {
+      errors.entryFee = 'Entry fee cannot be negative'
+    }
+    if (values.visitorRules && values.visitorRules.length > 4000) {
+      errors.visitorRules = 'Visitor rules must be at most 4000 characters'
+    }
+    const hasLat = values.latitude != null
+    const hasLng = values.longitude != null
+    if (hasLat !== hasLng) {
+      errors[hasLat ? 'longitude' : 'latitude'] = 'Latitude and longitude must be entered together'
+    }
+    if (hasLat && (values.latitude! < -90 || values.latitude! > 90)) {
+      errors.latitude = 'Latitude must be between -90 and 90'
+    }
+    if (hasLng && (values.longitude! < -180 || values.longitude! > 180)) {
+      errors.longitude = 'Longitude must be between -180 and 180'
+    }
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
+
+  const numberOrNull = (raw: string): number | null => (raw.trim() === '' ? null : Number(raw))
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -95,6 +123,11 @@ export default function DestinationForm({
         ...values,
         description: values.description?.trim() || undefined,
         bestTimeToVisit: values.bestTimeToVisit?.trim() || undefined,
+        openingHours: values.openingHours?.trim() || undefined,
+        visitorRules: values.visitorRules?.trim() || undefined,
+        entryFee: values.entryFee ?? undefined,
+        latitude: values.latitude ?? undefined,
+        longitude: values.longitude ?? undefined,
         imageUrls: (values.imageUrls ?? []).map((url) => url.trim()).filter((url) => url.length > 0),
       })
     } catch (err) {
@@ -211,6 +244,71 @@ export default function DestinationForm({
         )}
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Input
+          id="openingHours"
+          label="Opening hours (optional)"
+          placeholder="e.g. Daily 6am-6pm"
+          value={values.openingHours ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, openingHours: e.target.value }))}
+          error={fieldErrors.openingHours}
+        />
+        <Input
+          id="entryFee"
+          label="Entry fee (optional, 0 = free)"
+          type="number"
+          min={0}
+          step="0.01"
+          value={values.entryFee ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, entryFee: numberOrNull(e.target.value) }))}
+          error={fieldErrors.entryFee}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="visitorRules" className="text-sm font-medium text-slate-700">
+          Visitor rules &amp; guidelines (optional)
+        </label>
+        <textarea
+          id="visitorRules"
+          rows={3}
+          placeholder="Dress code, photography, safety..."
+          value={values.visitorRules ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, visitorRules: e.target.value }))}
+          className={`rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            fieldErrors.visitorRules ? 'border-red-500' : 'border-slate-300'
+          }`}
+        />
+        {fieldErrors.visitorRules && <span className="text-sm text-red-600">{fieldErrors.visitorRules}</span>}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Input
+          id="latitude"
+          label="Latitude (optional)"
+          type="number"
+          step="any"
+          min={-90}
+          max={90}
+          placeholder="e.g. 6.8667"
+          value={values.latitude ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, latitude: numberOrNull(e.target.value) }))}
+          error={fieldErrors.latitude}
+        />
+        <Input
+          id="longitude"
+          label="Longitude (optional)"
+          type="number"
+          step="any"
+          min={-180}
+          max={180}
+          placeholder="e.g. 81.0466"
+          value={values.longitude ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, longitude: numberOrNull(e.target.value) }))}
+          error={fieldErrors.longitude}
+        />
+      </div>
+
       <div className="flex flex-col gap-2">
         <span className="text-sm font-medium text-slate-700">Images (optional)</span>
         {imageUrls.map((url, index) => (
@@ -233,6 +331,16 @@ export default function DestinationForm({
         </div>
       </div>
 
+      {!initialValues && (
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={values.saveAsDraft ?? false}
+            onChange={(e) => setValues((v) => ({ ...v, saveAsDraft: e.target.checked }))}
+          />
+          Save as draft (not visible to the public until published)
+        </label>
+      )}
       {formError && <p className="text-sm text-red-600">{formError}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting}>

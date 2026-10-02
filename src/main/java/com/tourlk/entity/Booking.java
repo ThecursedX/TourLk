@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
@@ -53,6 +54,16 @@ public class Booking extends AuditableEntity {
     @Column(name = "number_of_travelers", nullable = false)
     private int numberOfTravelers;
 
+    /**
+     * package price * numberOfTravelers, frozen at creation so later package
+     * price edits don't change what this booking costs. Nullable only so
+     * {@code ddl-auto: update} can add the column to existing rows; those
+     * legacy rows fall back to the live package price — see
+     * {@code BookingServiceImpl#totalPriceOf}.
+     */
+    @Column(name = "total_price", precision = 10, scale = 2)
+    private BigDecimal totalPrice;
+
     @Column(name = "special_requests", length = 1000)
     private String specialRequests;
 
@@ -73,5 +84,9 @@ public class Booking extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status_before_reschedule", length = 30)
     private BookingStatus statusBeforeReschedule;
+
+    /** Set when a PENDING booking is rejected by the package owner or an admin. */
+    @Column(name = "rejection_reason", length = 1000)
+    private String rejectionReason;
 
 }

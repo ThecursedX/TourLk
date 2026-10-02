@@ -27,6 +27,14 @@ export function updateVehicle(id: number, data: VehicleRequestDto) {
   return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}`, data).then((res) => res.data)
 }
 
+export function submitVehicleForVerification(id: number) {
+  return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/submit`).then((res) => res.data)
+}
+
+export function startVehicleMaintenance(id: number) {
+  return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/maintenance`).then((res) => res.data)
+}
+
 export function approveVehicle(id: number) {
   return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/approve`).then((res) => res.data)
 }

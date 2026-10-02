@@ -2,9 +2,7 @@ package com.tourlk.service;
 
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
-import com.stripe.model.Refund;
 import com.stripe.param.PaymentIntentCreateParams;
-import com.stripe.param.RefundCreateParams;
 import com.tourlk.dto.BookingResponseDto;
 import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
@@ -14,8 +12,10 @@ import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Invoice;
 import com.tourlk.entity.Payment;
+import com.tourlk.entity.SavedPaymentMethod;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BookingStatus;
+import com.tourlk.enums.NotificationType;
 import com.tourlk.enums.PayableType;
 import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
@@ -28,6 +28,7 @@ import com.tourlk.exception.PaymentRequiredException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.InvoiceRepository;
 import com.tourlk.repo.PaymentRepository;
+import com.tourlk.repo.SavedPaymentMethodRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -62,6 +63,9 @@ public class PaymentServiceImpl implements PaymentService {
     private final RoomReservationService roomReservationService;
     // Transport module touchpoint (see VehicleHireServiceImpl for the hire side).
     private final VehicleHireService vehicleHireService;
+    private final NotificationService notificationService;
+    private final RefundGateway refundGateway;
+    private final SavedPaymentMethodRepository savedPaymentMethodRepository;
 
     @Override
     @Transactional
@@ -78,8 +82,8 @@ public class PaymentServiceImpl implements PaymentService {
                             + "). Please refresh and try again.");
         }
 
-        PaymentIntent intent =
-                createStripePaymentIntent(realAmount, request.getPayableType(), request.getPayableId());
+        PaymentIntent intent = createStripePaymentIntent(realAmount, request.getPayableType(), request.getPayableId(),
+                currentUser, request.getSavedPaymentMethodId());
 
         Payment payment = Payment.builder()
                 .payer(currentUser)
@@ -109,7 +113,8 @@ public class PaymentServiceImpl implements PaymentService {
                     "This booking is not awaiting payment (status: " + booking.getStatus() + ")");
         }
 
-        return booking.getTourPackage().getPrice().multiply(BigDecimal.valueOf(booking.getNumberOfTravelers()));
+        // Frozen at booking time (with a live-price fallback for legacy rows) — see BookingServiceImpl.
+        return booking.getTotalPrice();
     }
 
     private BigDecimal resolveReservationAmount(Long reservationId, User currentUser) {
@@ -149,19 +154,34 @@ public class PaymentServiceImpl implements PaymentService {
         return hire.getTotalPrice();
     }
 
-    private PaymentIntent createStripePaymentIntent(BigDecimal amount, PayableType payableType, Long payableId) {
+    private PaymentIntent createStripePaymentIntent(BigDecimal amount, PayableType payableType, Long payableId,
+                                                     User currentUser, Long savedPaymentMethodId) {
         try {
-            PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+            PaymentIntentCreateParams.Builder builder = PaymentIntentCreateParams.builder()
                     .setAmount(toMinorUnits(amount))
                     .setCurrency(CURRENCY)
                     .putMetadata("payableType", payableType.name())
-                    .putMetadata("payableId", String.valueOf(payableId))
-                    .setAutomaticPaymentMethods(
-                            PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
-                                    .setEnabled(true)
-                                    .build())
-                    .build();
-            return PaymentIntent.create(params);
+                    .putMetadata("payableId", String.valueOf(payableId));
+
+            if (savedPaymentMethodId != null) {
+                SavedPaymentMethod savedMethod = savedPaymentMethodRepository.findById(savedPaymentMethodId)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Saved payment method not found with id: " + savedPaymentMethodId));
+                if (!savedMethod.getUser().getId().equals(currentUser.getId())) {
+                    throw new AccessDeniedException("This payment method does not belong to you");
+                }
+                builder.setCustomer(currentUser.getStripeCustomerId())
+                        .setPaymentMethod(savedMethod.getStripePaymentMethodId())
+                        .setConfirm(true)
+                        .setOffSession(false);
+            } else {
+                builder.setAutomaticPaymentMethods(
+                        PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                .setEnabled(true)
+                                .build());
+            }
+
+            return PaymentIntent.create(builder.build());
         } catch (StripeException e) {
             throw new PaymentGatewayException("Could not start payment: " + e.getMessage(), e);
         }
@@ -184,6 +204,10 @@ public class PaymentServiceImpl implements PaymentService {
 
         payment.setStatus(PaymentStatus.SUCCEEDED);
         paymentRepository.save(payment);
+
+        notificationService.notify(payment.getPayer(), NotificationType.PAYMENT_SUCCEEDED,
+                "Payment successful", "Your payment of " + payment.getAmount() + " " + payment.getCurrency()
+                        + " was successful", "/payments/mine");
 
         // The charge succeeded — that's a fact, and the Payment row above
         // already reflects it. If confirming the underlying booking fails
@@ -228,17 +252,7 @@ public class PaymentServiceImpl implements PaymentService {
                     "Only SUCCEEDED payments can be refunded, but this payment is " + payment.getStatus());
         }
 
-        try {
-            RefundCreateParams params = RefundCreateParams.builder()
-                    .setPaymentIntent(payment.getStripePaymentIntentId())
-                    .build();
-            Refund.create(params);
-        } catch (StripeException e) {
-            throw new PaymentGatewayException("Could not process refund: " + e.getMessage(), e);
-        }
-
-        payment.setStatus(PaymentStatus.REFUNDED);
-        return toResponse(paymentRepository.save(payment));
+        return toResponse(refundGateway.refund(payment, payment.getAmount()));
     }
 
     @Override
@@ -329,6 +343,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .status(payment.getStatus())
                 .payableType(payment.getPayableType())
                 .payableId(payment.getPayableId())
+                .refundAmount(payment.getRefundAmount())
                 .createdAt(payment.getCreatedAt())
                 .build();
     }

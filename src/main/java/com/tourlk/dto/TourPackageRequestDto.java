@@ -1,5 +1,6 @@
 package com.tourlk.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Getter
 @Setter
@@ -39,5 +41,18 @@ public class TourPackageRequestDto {
     @NotNull(message = "Max capacity is required")
     @Positive(message = "Max capacity must be a positive number")
     private Integer maxCapacity;
+
+    /** Optional; day numbers are validated against durationDays in the service. */
+    @Valid
+    private List<ItineraryDayRequestDto> itineraryDays;
+
+    /** Optional; blank entries are dropped in the service. */
+    private List<@Size(max = 300, message = "Inclusion must be at most 300 characters") String> inclusions;
+
+    /** Optional; blank entries are dropped in the service. */
+    private List<@Size(max = 300, message = "Exclusion must be at most 300 characters") String> exclusions;
+
+    /** Optional; blank entries are dropped and the rest checked in the service (http(s) only, max 10). */
+    private List<@Size(max = 1000, message = "Image URL must be at most 1000 characters") String> imageUrls;
 
 }

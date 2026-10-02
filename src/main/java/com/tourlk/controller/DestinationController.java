@@ -1,5 +1,6 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.DestinationClosureRequestDto;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.enums.Province;
@@ -10,6 +11,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,6 +51,37 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.updateDestination(id, request));
     }
 
+    @PutMapping("/{id}/submit")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DestinationResponseDto> submit(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.submitForReview(id));
+    }
+
+    @PutMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DestinationResponseDto> publish(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.publishDestination(id));
+    }
+
+    @PutMapping("/{id}/close")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DestinationResponseDto> close(@PathVariable Long id,
+                                                         @Valid @RequestBody DestinationClosureRequestDto request) {
+        return ResponseEntity.ok(destinationService.closeTemporarily(id, request.getReason(), request.getUntil()));
+    }
+
+    @PutMapping("/{id}/reopen")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DestinationResponseDto> reopen(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.reopenDestination(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DestinationResponseDto> archive(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.archiveDestination(id));
+    }
+
     @PutMapping("/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DestinationResponseDto> deactivate(@PathVariable Long id) {
@@ -61,14 +95,22 @@ public class DestinationController {
     }
 
     /**
-     * Public browse — active destinations only. Optional {@code search}
-     * (name contains, case-insensitive) or {@code province} (e.g.
-     * {@code SOUTHERN}) filter; if both are given, {@code search} wins.
+     * Public browse — PUBLISHED and TEMPORARILY_CLOSED destinations only.
+     * Optional {@code nearby=lat,lng} (with {@code radiusKm}, default 50)
+     * returns destinations within that distance, nearest first; otherwise
+     * optional {@code search} (name contains, case-insensitive) or
+     * {@code province} (e.g. {@code SOUTHERN}) filter; if both are given,
+     * {@code search} wins. {@code nearby} takes precedence over both.
      */
     @GetMapping
     public ResponseEntity<List<DestinationResponseDto>> browse(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) Province province) {
+            @RequestParam(required = false) Province province,
+            @RequestParam(required = false) String nearby,
+            @RequestParam(required = false) Double radiusKm) {
+        if (nearby != null && !nearby.isBlank()) {
+            return ResponseEntity.ok(destinationService.searchNearby(nearby, radiusKm));
+        }
         if (search != null && !search.isBlank()) {
             return ResponseEntity.ok(destinationService.searchByName(search));
         }
@@ -94,8 +136,10 @@ public class DestinationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DestinationResponseDto> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(destinationService.getById(id));
+    public ResponseEntity<DestinationResponseDto> getById(@PathVariable Long id, Authentication authentication) {
+        boolean isAdmin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return ResponseEntity.ok(destinationService.getById(id, isAdmin));
     }
 
 }

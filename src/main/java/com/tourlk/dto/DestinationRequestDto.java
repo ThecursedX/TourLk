@@ -1,6 +1,8 @@
 package com.tourlk.dto;
 
 import com.tourlk.enums.Province;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -9,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -42,5 +45,26 @@ public class DestinationRequestDto {
 
     /** Optional; blank entries are dropped and the rest checked in the service. */
     private List<@Size(max = 1000, message = "Image URL must be at most 1000 characters") String> imageUrls;
+
+    @Size(max = 300, message = "Opening hours must be at most 300 characters")
+    private String openingHours;
+
+    @DecimalMin(value = "0.0", message = "Entry fee cannot be negative")
+    @DecimalMax(value = "99999999.99", message = "Entry fee is too large")
+    private BigDecimal entryFee;
+
+    @Size(max = 4000, message = "Visitor rules must be at most 4000 characters")
+    private String visitorRules;
+
+    @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90")
+    @DecimalMax(value = "90.0", message = "Latitude must be between -90 and 90")
+    private Double latitude;
+
+    @DecimalMin(value = "-180.0", message = "Longitude must be between -180 and 180")
+    @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
+    private Double longitude;
+
+    /** On create only: save as DRAFT instead of publishing straight away. */
+    private Boolean saveAsDraft;
 
 }

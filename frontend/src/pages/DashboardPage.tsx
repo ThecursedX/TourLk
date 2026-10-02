@@ -1,6 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getMyProfile } from '../api/userApi'
 import { useAuthStore } from '../auth/authStore'
 import RoleGate from '../auth/RoleGate'
+import GuideReviewStatsCard from '../components/reviews/GuideReviewStatsCard'
+import type { VerificationStatus } from '../types/user'
 
 interface ModuleTileProps {
   to: string
@@ -40,6 +44,48 @@ function ModuleTile({ to, title, description, tone = 'ocean' }: ModuleTileProps)
   )
 }
 
+const VERIFICATION_BANNER: Record<Exclude<VerificationStatus, 'VERIFIED'>, { tone: string; message: string }> = {
+  NOT_SUBMITTED: {
+    tone: 'bg-amber-50 text-amber-800 border-amber-200',
+    message: 'Submit your licence for verification on your Profile page before you can get started.',
+  },
+  PENDING: {
+    tone: 'bg-blue-50 text-blue-800 border-blue-200',
+    message: 'Your licence is awaiting admin review. You can list once it is verified.',
+  },
+  REJECTED: {
+    tone: 'bg-red-50 text-red-800 border-red-200',
+    message: 'Your licence submission was rejected. Visit your Profile page to see why and resubmit.',
+  },
+}
+
+function VerificationBanner({ role }: { role: 'GUIDE' | 'DRIVER' }) {
+  const [status, setStatus] = useState<VerificationStatus | null>(null)
+
+  useEffect(() => {
+    getMyProfile()
+      .then((profile) => setStatus(profile.verificationStatus))
+      .catch(() => setStatus(null))
+  }, [])
+
+  if (!status || status === 'VERIFIED') {
+    return null
+  }
+
+  const banner = VERIFICATION_BANNER[status]
+  const action = role === 'DRIVER' ? 'register vehicles' : 'create tour packages'
+
+  return (
+    <div className={`rounded-2xl border p-4 text-sm ${banner.tone}`}>
+      <span className="font-semibold">Licence verification needed. </span>
+      You must be a verified {role.toLowerCase()} before you can {action}. {banner.message}{' '}
+      <Link to="/profile" className="font-semibold underline">
+        Go to Profile
+      </Link>
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user)
 
@@ -52,6 +98,9 @@ export default function DashboardPage() {
           where each module lives.
         </p>
       </div>
+
+      {user?.role === 'GUIDE' && <VerificationBanner role="GUIDE" />}
+      {user?.role === 'DRIVER' && <VerificationBanner role="DRIVER" />}
 
       <RoleGate allowed={['TOURIST']}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -72,6 +121,12 @@ export default function DashboardPage() {
       <RoleGate allowed={['ADMIN', 'GUIDE']}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ModuleTile to="/packages/mine" title="My Packages" description="Create and manage the tour packages you offer" />
+        </div>
+      </RoleGate>
+
+      <RoleGate allowed={['GUIDE']}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <GuideReviewStatsCard />
         </div>
       </RoleGate>
 

@@ -45,6 +45,14 @@ export default function EditVehiclePage() {
             registrationNumber: vehicle.registrationNumber,
             seatingCapacity: vehicle.seatingCapacity,
             pricePerDay: vehicle.pricePerDay,
+            airConditioned: vehicle.airConditioned,
+            facilities: vehicle.facilities,
+            imageUrls: vehicle.imageUrls,
+            driverName: vehicle.driverName ?? '',
+            driverPhone: vehicle.driverPhone ?? '',
+            insuranceExpiry: vehicle.insuranceExpiry ?? '',
+            lastMaintenanceDate: vehicle.lastMaintenanceDate ?? '',
+            nextMaintenanceDate: vehicle.nextMaintenanceDate ?? '',
           }}
           onSubmit={handleSubmit}
           submitLabel="Save Changes"

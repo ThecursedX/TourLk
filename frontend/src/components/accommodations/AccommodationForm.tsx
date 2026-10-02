@@ -2,9 +2,11 @@ import { useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
+import TagInput from '../ui/TagInput'
+import ImageUrlListInput, { cleanImageUrls } from '../ui/ImageUrlListInput'
 import DestinationSelect from '../destinations/DestinationSelect'
 import type { ErrorResponse } from '../../types/auth'
-import type { AccommodationRequestDto } from '../../types/accommodation'
+import { MAX_ACCOMMODATION_IMAGES, type AccommodationRequestDto } from '../../types/accommodation'
 import type { DestinationSummary } from '../../types/destination'
 
 interface AccommodationFormProps {
@@ -21,6 +23,10 @@ const emptyValues: AccommodationRequestDto = {
   description: '',
   locationId: '',
   starRating: undefined,
+  address: '',
+  facilities: [],
+  policies: '',
+  imageUrls: [],
 }
 
 export default function AccommodationForm({
@@ -51,6 +57,12 @@ export default function AccommodationForm({
     if (values.starRating !== undefined && (values.starRating < 1 || values.starRating > 5)) {
       errors.starRating = 'Star rating must be between 1 and 5'
     }
+    if ((values.address ?? '').length > 500) {
+      errors.address = 'Address must be at most 500 characters'
+    }
+    if ((values.imageUrls ?? []).length > MAX_ACCOMMODATION_IMAGES) {
+      errors.imageUrls = `At most ${MAX_ACCOMMODATION_IMAGES} images are allowed`
+    }
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -62,7 +74,7 @@ export default function AccommodationForm({
 
     setSubmitting(true)
     try {
-      await onSubmit(values)
+      await onSubmit({ ...values, imageUrls: cleanImageUrls(values.imageUrls) })
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
         setFormError(err.response.data.message)
@@ -126,6 +138,40 @@ export default function AccommodationForm({
           error={fieldErrors.starRating}
         />
       </div>
+      <Input
+        id="address"
+        label="Address (optional)"
+        placeholder="Street, city"
+        value={values.address ?? ''}
+        onChange={(e) => setValues((v) => ({ ...v, address: e.target.value }))}
+        error={fieldErrors.address}
+      />
+      <TagInput
+        label="Facilities (optional)"
+        values={values.facilities ?? []}
+        onChange={(next) => setValues((v) => ({ ...v, facilities: next }))}
+        placeholder="e.g. Pool, WiFi, then Enter"
+        error={fieldErrors.facilities}
+      />
+      <div className="flex flex-col gap-1">
+        <label htmlFor="policies" className="text-sm font-medium text-slate-700">
+          Policies (optional)
+        </label>
+        <textarea
+          id="policies"
+          rows={3}
+          placeholder="Check-in/out times, cancellation, house rules..."
+          value={values.policies ?? ''}
+          onChange={(e) => setValues((v) => ({ ...v, policies: e.target.value }))}
+          className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      <ImageUrlListInput
+        values={values.imageUrls ?? []}
+        onChange={(next) => setValues((v) => ({ ...v, imageUrls: next }))}
+        max={MAX_ACCOMMODATION_IMAGES}
+        error={fieldErrors.imageUrls}
+      />
       {formError && <p className="text-sm text-red-600">{formError}</p>}
       <Button type="submit" disabled={submitting} className="self-start">
         {submitting ? submittingLabel : submitLabel}

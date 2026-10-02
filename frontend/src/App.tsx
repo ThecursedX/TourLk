@@ -7,14 +7,17 @@ import AccountLayout from './components/layout/AccountLayout'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import NotFoundPage from './pages/NotFoundPage'
 import PackageListPage from './pages/packages/PackageListPage'
 import PackageDetailPage from './pages/packages/PackageDetailPage'
 import MyPackagesPage from './pages/packages/MyPackagesPage'
+import MyPackageBookingsPage from './pages/bookings/MyPackageBookingsPage'
 import CreatePackagePage from './pages/packages/CreatePackagePage'
 import EditPackagePage from './pages/packages/EditPackagePage'
-import AdminApprovalsPage from './pages/packages/AdminApprovalsPage'
+import AdminPackagesPage from './pages/packages/AdminPackagesPage'
 import MyBookingsPage from './pages/bookings/MyBookingsPage'
 import BookingDetailPage from './pages/bookings/BookingDetailPage'
 import AdminBookingsPage from './pages/bookings/AdminBookingsPage'
@@ -38,6 +41,7 @@ import AdminVehicleApprovalsPage from './pages/vehicles/AdminVehicleApprovalsPag
 import MyHiresPage from './pages/vehicles/MyHiresPage'
 import OwnerHiresPage from './pages/vehicles/OwnerHiresPage'
 import CheckoutPage from './pages/payments/CheckoutPage'
+import PaymentMethodsPage from './pages/payments/PaymentMethodsPage'
 import MyPaymentsPage from './pages/payments/MyPaymentsPage'
 import InvoicePage from './pages/payments/InvoicePage'
 import AdminPaymentsPage from './pages/payments/AdminPaymentsPage'
@@ -48,7 +52,9 @@ import TicketDetailPage from './pages/support/TicketDetailPage'
 import AdminTicketsPage from './pages/support/AdminTicketsPage'
 import AdminUnassignedTicketsPage from './pages/support/AdminUnassignedTicketsPage'
 import ProfilePage from './pages/profile/ProfilePage'
+import NotificationsPage from './pages/notifications/NotificationsPage'
 import AdminUsersPage from './pages/users/AdminUsersPage'
+import AdminLicenceVerificationsPage from './pages/users/AdminLicenceVerificationsPage'
 import AdminReviewsPage from './pages/reviews/AdminReviewsPage'
 
 function RootRedirect() {
@@ -69,6 +75,8 @@ function App() {
         <Route path="/home" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
         <Route path="/destinations" element={<DestinationListPage />} />
         <Route path="/destinations/:id" element={<DestinationDetailPage />} />
@@ -96,18 +104,21 @@ function App() {
             <Route path="/hires/mine" element={<MyHiresPage />} />
             <Route path="/checkout/:payableType/:payableId" element={<CheckoutPage />} />
             <Route path="/payments/mine" element={<MyPaymentsPage />} />
+            <Route path="/payment-methods" element={<PaymentMethodsPage />} />
             <Route path="/payments/:id/invoice" element={<InvoicePage />} />
             <Route path="/reviews/mine" element={<MyReviewsPage />} />
             <Route path="/support/mine" element={<MyTicketsPage />} />
             <Route path="/support/new" element={<NewTicketPage />} />
             <Route path="/support/:id" element={<TicketDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
         </Route>
 
         <Route element={<ProtectedRoute roles={['ADMIN', 'GUIDE']} />}>
           <Route element={<AccountLayout />}>
             <Route path="/packages/mine" element={<MyPackagesPage />} />
+            <Route path="/packages/mine/bookings" element={<MyPackageBookingsPage />} />
             <Route path="/packages/new" element={<CreatePackagePage />} />
             <Route path="/packages/:id/edit" element={<EditPackagePage />} />
           </Route>
@@ -117,10 +128,11 @@ function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="destinations" element={<AdminDestinationsPage />} />
             <Route path="users" element={<AdminUsersPage />} />
-            <Route path="packages" element={<AdminApprovalsPage />} />
+            <Route path="packages" element={<AdminPackagesPage />} />
             <Route path="bookings" element={<AdminBookingsPage />} />
             <Route path="accommodations" element={<AdminAccommodationApprovalsPage />} />
             <Route path="vehicles" element={<AdminVehicleApprovalsPage />} />
+            <Route path="verifications" element={<AdminLicenceVerificationsPage />} />
             <Route path="payments" element={<AdminPaymentsPage />} />
             <Route path="tickets" element={<AdminTicketsPage />} />
             <Route path="tickets/unassigned" element={<AdminUnassignedTicketsPage />} />

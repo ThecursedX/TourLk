@@ -12,6 +12,7 @@ import com.tourlk.entity.Review;
 import com.tourlk.entity.TourPackage;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BookingStatus;
+import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
@@ -20,6 +21,7 @@ import com.tourlk.exception.DuplicateReviewException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.exception.ReviewNotEligibleException;
 import com.tourlk.exception.ReviewableMismatchException;
+import com.tourlk.repo.ReviewEditHistoryRepository;
 import com.tourlk.repo.ReviewRepository;
 import com.tourlk.repo.TourPackageRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,6 +55,8 @@ class ReviewServiceImplTest {
     @Mock
     private ReviewRepository reviewRepository;
     @Mock
+    private ReviewEditHistoryRepository reviewEditHistoryRepository;
+    @Mock
     private BookingService bookingService;
     @Mock
     private RoomReservationService roomReservationService;
@@ -60,6 +64,10 @@ class ReviewServiceImplTest {
     private VehicleHireService vehicleHireService;
     @Mock
     private TourPackageRepository tourPackageRepository;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private ProfanityFilterService profanityFilterService;
 
     @InjectMocks
     private ReviewServiceImpl service;
@@ -101,7 +109,8 @@ class ReviewServiceImplTest {
     void createReview_completedOwnedMatchingBooking_savesReview() {
         when(bookingService.getBookingById(500L, reviewer))
                 .thenReturn(completedBookingFor(1L, 100L, BookingStatus.COMPLETED));
-        when(reviewRepository.existsByReviewableTypeAndSourceBookingId(ReviewableType.TOUR_PACKAGE, 500L))
+        when(reviewRepository.existsByReviewableTypeAndSourceBookingIdAndStatusNot(
+                ReviewableType.TOUR_PACKAGE, 500L, ReviewStatus.DELETED))
                 .thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> {
             Review r = inv.getArgument(0);
@@ -149,7 +158,8 @@ class ReviewServiceImplTest {
     void createReview_alreadyReviewed_throwsDuplicateReview() {
         when(bookingService.getBookingById(500L, reviewer))
                 .thenReturn(completedBookingFor(1L, 100L, BookingStatus.COMPLETED));
-        when(reviewRepository.existsByReviewableTypeAndSourceBookingId(ReviewableType.TOUR_PACKAGE, 500L))
+        when(reviewRepository.existsByReviewableTypeAndSourceBookingIdAndStatusNot(
+                ReviewableType.TOUR_PACKAGE, 500L, ReviewStatus.DELETED))
                 .thenReturn(true);
 
         assertThatThrownBy(() -> service.createReview(packageReview(), reviewer))
@@ -165,7 +175,8 @@ class ReviewServiceImplTest {
                 .room(RoomSummaryDto.builder().id(60L).accommodationId(50L).build())
                 .build();
         when(roomReservationService.getReservationById(600L, reviewer)).thenReturn(reservation);
-        when(reviewRepository.existsByReviewableTypeAndSourceBookingId(ReviewableType.ACCOMMODATION, 600L))
+        when(reviewRepository.existsByReviewableTypeAndSourceBookingIdAndStatusNot(
+                ReviewableType.ACCOMMODATION, 600L, ReviewStatus.DELETED))
                 .thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -214,13 +225,16 @@ class ReviewServiceImplTest {
     }
 
     @Test
-    void deleteReview_byAdmin_deletes() {
+    void deleteReview_byAdmin_softDeletesInstead() {
         Review review = persistedReview(reviewer);
         when(reviewRepository.findById(7L)).thenReturn(Optional.of(review));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.deleteReview(7L, admin);
 
-        verify(reviewRepository).delete(review);
+        assertThat(review.getStatus()).isEqualTo(ReviewStatus.DELETED);
+        verify(reviewRepository, never()).delete(any());
+        verify(reviewRepository).save(review);
     }
 
     @Test
@@ -246,7 +260,8 @@ class ReviewServiceImplTest {
 
     @Test
     void getRatingSummary_averagesRatingsAndCountsReviews() {
-        when(reviewRepository.findByReviewableTypeAndReviewableId(eq(ReviewableType.TOUR_PACKAGE), eq(100L)))
+        when(reviewRepository.findByReviewableTypeAndReviewableIdAndStatusNotIn(
+                eq(ReviewableType.TOUR_PACKAGE), eq(100L), eq(ReviewStatus.HIDDEN_FROM_PUBLIC)))
                 .thenReturn(List.of(
                         Review.builder().rating(5).reviewer(reviewer).build(),
                         Review.builder().rating(4).reviewer(reviewer).build(),
@@ -260,7 +275,8 @@ class ReviewServiceImplTest {
 
     @Test
     void getRatingSummary_noReviews_returnsZeroes() {
-        when(reviewRepository.findByReviewableTypeAndReviewableId(any(), any())).thenReturn(List.of());
+        when(reviewRepository.findByReviewableTypeAndReviewableIdAndStatusNotIn(any(), any(), any()))
+                .thenReturn(List.of());
 
         RatingSummaryDto summary = service.getRatingSummary(ReviewableType.VEHICLE, 40L);
 
@@ -343,26 +359,44 @@ class ReviewServiceImplTest {
     // ------------------------------------------------------------------
 
     @Test
-    void flagReview_thenUnflagReview_togglesFlag() {
+    void reportReview_thenUnreportReview_togglesStatus() {
         Review review = persistedReview(reviewer);
         when(reviewRepository.findById(7L)).thenReturn(Optional.of(review));
         when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(service.flagReview(7L).isFlagged()).isTrue();
-        assertThat(service.unflagReview(7L).isFlagged()).isFalse();
+        assertThat(service.reportReview(7L).getStatus()).isEqualTo(ReviewStatus.REPORTED);
+        assertThat(service.unreportReview(7L).getStatus()).isEqualTo(ReviewStatus.PUBLISHED);
     }
 
     @Test
-    void getAllReviewsForAdmin_flaggedOnly_filtersOutUnflaggedAndLegacyNullFlags() {
-        Review flagged = persistedReview(reviewer);
-        flagged.setFlagged(true);
-        Review clean = persistedReview(reviewer);
-        Review legacy = persistedReview(reviewer);
-        legacy.setFlagged(null);
-        when(reviewRepository.findAll(any(Sort.class))).thenReturn(List.of(flagged, clean, legacy));
+    void hideReview_thenUnhideReview_togglesStatus() {
+        Review review = persistedReview(reviewer);
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(review));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(service.getAllReviewsForAdmin(true)).hasSize(1);
-        assertThat(service.getAllReviewsForAdmin(null)).hasSize(3);
-        assertThat(service.getAllReviewsForAdmin(false)).hasSize(3);
+        assertThat(service.hideReview(7L).getStatus()).isEqualTo(ReviewStatus.HIDDEN);
+        assertThat(service.unhideReview(7L).getStatus()).isEqualTo(ReviewStatus.PUBLISHED);
+    }
+
+    @Test
+    void unreportReview_previouslyEdited_revertsToEditedNotPublished() {
+        Review review = persistedReview(reviewer);
+        review.setStatus(ReviewStatus.REPORTED);
+        when(reviewRepository.findById(7L)).thenReturn(Optional.of(review));
+        when(reviewRepository.save(any(Review.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(reviewEditHistoryRepository.existsByReviewId(7L)).thenReturn(true);
+
+        assertThat(service.unreportReview(7L).getStatus()).isEqualTo(ReviewStatus.EDITED);
+    }
+
+    @Test
+    void getAllReviewsForAdmin_byStatus_filtersToThatStatusOnly() {
+        Review reported = persistedReview(reviewer);
+        reported.setStatus(ReviewStatus.REPORTED);
+        Review published = persistedReview(reviewer);
+        when(reviewRepository.findAll(any(Sort.class))).thenReturn(List.of(reported, published));
+
+        assertThat(service.getAllReviewsForAdmin(ReviewStatus.REPORTED)).hasSize(1);
+        assertThat(service.getAllReviewsForAdmin(null)).hasSize(2);
     }
 }

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { createTicket } from '../../api/supportTicketApi'
+import AttachmentPicker from '../../components/support/AttachmentPicker'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
@@ -20,6 +21,7 @@ export default function NewTicketPage() {
   const [category, setCategory] = useState<TicketCategory>('OTHER')
   const [priority, setPriority] = useState<TicketPriority>('MEDIUM')
   const [message, setMessage] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -39,7 +41,7 @@ export default function NewTicketPage() {
 
     setSubmitting(true)
     try {
-      const created = await createTicket({ subject, category, priority, message })
+      const created = await createTicket({ subject, category, priority, message }, files)
       navigate(`/support/${created.id}`)
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
@@ -106,6 +108,7 @@ export default function NewTicketPage() {
             />
             {fieldErrors.message && <span className="text-sm text-red-600">{fieldErrors.message}</span>}
           </div>
+          <AttachmentPicker files={files} onChange={setFiles} disabled={submitting} />
           {formError && <p className="text-sm text-red-600">{formError}</p>}
           <Button type="submit" disabled={submitting} className="self-start">
             {submitting ? 'Submitting...' : 'Submit Ticket'}

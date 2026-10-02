@@ -72,50 +72,58 @@ export default function MyPackagesPage() {
               key={pkg.id}
               tourPackage={pkg}
               footer={
-                <div className="flex flex-wrap gap-2">
-                  {(pkg.status === 'DRAFT' || pkg.status === 'ACTIVE') && (
-                    <Link to={`/packages/${pkg.id}/edit`}>
-                      <Button variant="secondary" disabled={disabled}>
-                        Edit
+                <div className="flex w-full flex-col gap-2">
+                  {pkg.status === 'DRAFT' && pkg.rejectionReason && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                      <span className="font-semibold">Rejected:</span> {pkg.rejectionReason}
+                      <span className="block text-xs text-red-700">Fix this, then submit again.</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {(pkg.status === 'DRAFT' || pkg.status === 'ACTIVE') && (
+                      <Link to={`/packages/${pkg.id}/edit`}>
+                        <Button variant="secondary" disabled={disabled}>
+                          Edit
+                        </Button>
+                      </Link>
+                    )}
+                    {pkg.status === 'DRAFT' && (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        onClick={() => runAction(pkg.id, submitPackageForApproval)}
+                      >
+                        Submit
                       </Button>
-                    </Link>
-                  )}
-                  {pkg.status === 'DRAFT' && (
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      onClick={() => runAction(pkg.id, submitPackageForApproval)}
-                    >
-                      Submit
-                    </Button>
-                  )}
-                  {pkg.status === 'ACTIVE' && (
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      onClick={() => runAction(pkg.id, deactivatePackage)}
-                    >
-                      Deactivate
-                    </Button>
-                  )}
-                  {pkg.status === 'INACTIVE' && (
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      onClick={() => runAction(pkg.id, reactivatePackage)}
-                    >
-                      Reactivate
-                    </Button>
-                  )}
-                  {pkg.status !== 'ARCHIVED' && (
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      onClick={() => runAction(pkg.id, archivePackage)}
-                    >
-                      Archive
-                    </Button>
-                  )}
+                    )}
+                    {pkg.status === 'ACTIVE' && (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        onClick={() => runAction(pkg.id, deactivatePackage)}
+                      >
+                        Deactivate
+                      </Button>
+                    )}
+                    {pkg.status === 'INACTIVE' && (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        onClick={() => runAction(pkg.id, reactivatePackage)}
+                      >
+                        Reactivate
+                      </Button>
+                    )}
+                    {pkg.status !== 'ARCHIVED' && (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        onClick={() => runAction(pkg.id, archivePackage)}
+                      >
+                        Archive
+                      </Button>
+                    )}
+                  </div>
                 </div>
               }
             />

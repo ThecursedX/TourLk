@@ -45,6 +45,28 @@ export default function PackageDetailPage() {
         &larr; Back to packages
       </Link>
       <Card className="flex flex-col gap-4">
+        {tourPackage.imageUrls.length > 0 && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <img
+              src={tourPackage.imageUrls[0]}
+              alt={tourPackage.title}
+              className="h-64 w-full rounded-xl object-cover sm:col-span-2 sm:h-72"
+            />
+            {tourPackage.imageUrls.length > 1 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
+                {tourPackage.imageUrls.slice(1, 3).map((url, i) => (
+                  <img
+                    key={url}
+                    src={url}
+                    alt={`${tourPackage.title} ${i + 2}`}
+                    className="h-32 w-full rounded-xl object-cover sm:h-[136px]"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-semibold text-slate-900">{tourPackage.title}</h1>
           <StatusBadge status={tourPackage.status} />
@@ -77,7 +99,69 @@ export default function PackageDetailPage() {
             <dd className="text-slate-900">{tourPackage.createdByName}</dd>
           </div>
         </div>
+
+        {(tourPackage.inclusions.length > 0 || tourPackage.exclusions.length > 0) && (
+          <div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2">
+            {tourPackage.inclusions.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Included</h3>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {tourPackage.inclusions.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                      <span className="mt-0.5 text-green-600">✓</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {tourPackage.exclusions.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Not included</h3>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {tourPackage.exclusions.map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                      <span className="mt-0.5 text-red-500">&times;</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
       </Card>
+
+      {tourPackage.itineraryDays.length > 0 && (
+        <Card className="flex flex-col gap-4">
+          <h2 className="text-lg font-semibold text-slate-900">Itinerary</h2>
+          <ol className="flex flex-col gap-4">
+            {tourPackage.itineraryDays.map((day) => (
+              <li key={day.id} className="flex gap-4 border-l-2 border-blue-200 pl-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-blue-600">
+                    Day {day.dayNumber}
+                  </span>
+                  <h3 className="font-medium text-slate-900">{day.title}</h3>
+                  {day.description && <p className="text-sm text-slate-600">{day.description}</p>}
+                  {day.placesToVisit.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {day.placesToVisit.map((place) => (
+                        <span
+                          key={place}
+                          className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600"
+                        >
+                          {place}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
 
       {tourPackage.status === 'ACTIVE' && (
         <Card className="flex flex-col gap-4">
@@ -92,7 +176,7 @@ export default function PackageDetailPage() {
             </p>
           )}
           {isAuthenticated && user?.role === 'TOURIST' && (
-            <BookNowForm tourPackageId={tourPackage.id} />
+            <BookNowForm tourPackageId={tourPackage.id} hasDepartures={tourPackage.hasDepartures} />
           )}
         </Card>
       )}

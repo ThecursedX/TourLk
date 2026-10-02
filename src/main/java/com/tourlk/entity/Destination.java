@@ -23,6 +23,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -93,9 +95,33 @@ public class Destination extends AuditableEntity {
     private String description;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 30)
     @Builder.Default
-    private DestinationStatus status = DestinationStatus.ACTIVE;
+    private DestinationStatus status = DestinationStatus.PUBLISHED;
+
+    @Column(name = "opening_hours", length = 300)
+    private String openingHours;
+
+    /** In LKR-agnostic currency units; 0 means free entry, null means unknown/not listed. */
+    @Column(name = "entry_fee", precision = 10, scale = 2)
+    private BigDecimal entryFee;
+
+    @Lob
+    @Column(name = "visitor_rules")
+    private String visitorRules;
+
+    /** WGS84 degrees; both are set or both are null. */
+    private Double latitude;
+
+    private Double longitude;
+
+    /** Why the destination is TEMPORARILY_CLOSED; cleared on reopening. */
+    @Column(name = "closure_reason", length = 500)
+    private String closureReason;
+
+    /** Last day of the closure, if known; the daily job reopens the destination after it. */
+    @Column(name = "closure_until")
+    private LocalDate closureUntil;
 
     /**
      * The province to show for this destination: the stored one, or a

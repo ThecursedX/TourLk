@@ -1,5 +1,8 @@
 export type ReviewableType = 'TOUR_PACKAGE' | 'ACCOMMODATION' | 'VEHICLE'
 
+// Matches com.tourlk.enums.ReviewStatus
+export type ReviewStatus = 'PUBLISHED' | 'EDITED' | 'REPORTED' | 'HIDDEN' | 'DELETED'
+
 // Matches com.tourlk.dto.ReviewRequestDto
 export interface ReviewRequestDto {
   reviewableType: ReviewableType
@@ -7,6 +10,7 @@ export interface ReviewRequestDto {
   sourceBookingId: number
   rating: number
   comment: string
+  imageUrls?: string[]
 }
 
 // Matches com.tourlk.dto.ReviewResponseDto
@@ -19,7 +23,10 @@ export interface ReviewResponseDto {
   reviewerName: string
   rating: number
   comment: string | null
-  flagged: boolean
+  imageUrls: string[]
+  status: ReviewStatus
+  editable: boolean
+  editDeadline: string | null
   guideReply: string | null
   guideReplyAt: string | null
   createdAt: string
@@ -37,4 +44,20 @@ export interface RatingSummaryDto {
 // Matches com.tourlk.dto.GuideReplyRequestDto
 export interface GuideReplyRequestDto {
   reply: string
+}
+
+// Matches com.tourlk.dto.ReviewEditHistoryResponseDto
+export interface ReviewEditHistoryResponseDto {
+  id: number
+  oldRating: number
+  oldComment: string | null
+  editedAt: string
+}
+
+// Matches com.tourlk.dto.GuideReviewStatsDto
+export interface GuideReviewStatsDto {
+  averageRating: number
+  totalReviews: number
+  countByStar: Record<number, number>
+  replyRate: number
 }

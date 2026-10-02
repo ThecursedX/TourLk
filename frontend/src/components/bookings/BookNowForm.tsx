@@ -1,22 +1,21 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { createBooking } from '../../api/bookingApi'
+import { getPackageDepartures } from '../../api/tourPackageApi'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
+import { formatLocalDate, tomorrowIso } from '../../utils/date'
 import type { ErrorResponse } from '../../types/auth'
+import type { PackageDepartureResponseDto } from '../../types/tourPackage'
 
 interface BookNowFormProps {
   tourPackageId: number
+  /** When true, the tourist must pick one of the package's departures instead of any date. */
+  hasDepartures: boolean
 }
 
-function tomorrow(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
-}
-
-export default function BookNowForm({ tourPackageId }: BookNowFormProps) {
+export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFormProps) {
   const navigate = useNavigate()
   const [travelDate, setTravelDate] = useState('')
   const [numberOfTravelers, setNumberOfTravelers] = useState(1)
@@ -24,14 +23,30 @@ export default function BookNowForm({ tourPackageId }: BookNowFormProps) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [departures, setDepartures] = useState<PackageDepartureResponseDto[]>([])
+  const [departuresLoading, setDeparturesLoading] = useState(hasDepartures)
+
+  useEffect(() => {
+    if (!hasDepartures) return
+    setDeparturesLoading(true)
+    getPackageDepartures(tourPackageId)
+      .then(setDepartures)
+      .catch(() => setFormError('Could not load departure dates. Please try again later.'))
+      .finally(() => setDeparturesLoading(false))
+  }, [tourPackageId, hasDepartures])
+
+  const selectedDeparture = departures.find((d) => d.departureDate === travelDate)
+  const noUpcomingDepartures = hasDepartures && !departuresLoading && departures.length === 0
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {}
     if (!travelDate) {
-      errors.travelDate = 'Travel date is required'
+      errors.travelDate = hasDepartures ? 'Please choose a departure' : 'Travel date is required'
     }
     if (!numberOfTravelers || numberOfTravelers <= 0) {
       errors.numberOfTravelers = 'Number of travelers must be a positive number'
+    } else if (selectedDeparture && numberOfTravelers > selectedDeparture.seatsLeft) {
+      errors.numberOfTravelers = `Only ${selectedDeparture.seatsLeft} seat(s) left on this departure`
     }
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
@@ -63,28 +78,83 @@ export default function BookNowForm({ tourPackageId }: BookNowFormProps) {
     }
   }
 
+  const travelersInput = (
+    <Input
+      id="numberOfTravelers"
+      label="Number of travelers"
+      type="number"
+      min={1}
+      max={selectedDeparture?.seatsLeft}
+      value={numberOfTravelers}
+      onChange={(e) => setNumberOfTravelers(Number(e.target.value))}
+      error={fieldErrors.numberOfTravelers}
+    />
+  )
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-      <div className="grid grid-cols-2 gap-4">
-        <Input
-          id="travelDate"
-          label="Travel date"
-          type="date"
-          min={tomorrow()}
-          value={travelDate}
-          onChange={(e) => setTravelDate(e.target.value)}
-          error={fieldErrors.travelDate}
-        />
-        <Input
-          id="numberOfTravelers"
-          label="Number of travelers"
-          type="number"
-          min={1}
-          value={numberOfTravelers}
-          onChange={(e) => setNumberOfTravelers(Number(e.target.value))}
-          error={fieldErrors.numberOfTravelers}
-        />
-      </div>
+      {hasDepartures ? (
+        <>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium text-slate-700">Choose a departure</legend>
+            {departuresLoading && <p className="text-sm text-slate-500">Loading departures...</p>}
+            {noUpcomingDepartures && (
+              <p className="text-sm text-slate-600">
+                There are no upcoming departures for this package right now. Please check back later.
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {departures.map((departure) => {
+                const full = departure.seatsLeft <= 0
+                const selected = departure.departureDate === travelDate
+                return (
+                  <label
+                    key={departure.id}
+                    className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm transition-colors ${
+                      full
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
+                        : selected
+                          ? 'cursor-pointer border-blue-500 bg-blue-50 text-slate-900 ring-2 ring-blue-400'
+                          : 'cursor-pointer border-slate-300 bg-white text-slate-900 hover:border-blue-400'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="departure"
+                        value={departure.departureDate}
+                        checked={selected}
+                        disabled={full}
+                        onChange={() => setTravelDate(departure.departureDate)}
+                        className="accent-blue-600"
+                      />
+                      <span className="font-medium">{formatLocalDate(departure.departureDate)}</span>
+                    </span>
+                    <span className={full ? 'font-semibold' : 'text-slate-500'}>
+                      {full ? 'Full' : `${departure.seatsLeft} seat${departure.seatsLeft === 1 ? '' : 's'} left`}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            {fieldErrors.travelDate && <span className="text-sm text-red-600">{fieldErrors.travelDate}</span>}
+          </fieldset>
+          <div className="grid grid-cols-2 gap-4">{travelersInput}</div>
+        </>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            id="travelDate"
+            label="Travel date"
+            type="date"
+            min={tomorrowIso()}
+            value={travelDate}
+            onChange={(e) => setTravelDate(e.target.value)}
+            error={fieldErrors.travelDate}
+          />
+          {travelersInput}
+        </div>
+      )}
       <div className="flex flex-col gap-1">
         <label htmlFor="specialRequests" className="text-sm font-medium text-slate-700">
           Special requests (optional)
@@ -98,7 +168,11 @@ export default function BookNowForm({ tourPackageId }: BookNowFormProps) {
         />
       </div>
       {formError && <p className="text-sm text-red-600">{formError}</p>}
-      <Button type="submit" disabled={submitting} className="self-start">
+      <Button
+        type="submit"
+        disabled={submitting || departuresLoading || noUpcomingDepartures}
+        className="self-start"
+      >
         {submitting ? 'Booking...' : 'Book Now'}
       </Button>
     </form>

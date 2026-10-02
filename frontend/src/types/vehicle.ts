@@ -1,4 +1,16 @@
-export type VehicleStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED'
+export type VehicleStatus =
+  | 'DRAFT'
+  | 'PENDING_VERIFICATION'
+  | 'AVAILABLE'
+  | 'BOOKED'
+  | 'UNDER_MAINTENANCE'
+  | 'OUT_OF_SERVICE'
+  | 'ARCHIVED'
+
+/** Statuses a tourist can still send a hire request to (date overlaps are checked server-side). */
+export const HIREABLE_VEHICLE_STATUSES: VehicleStatus[] = ['AVAILABLE', 'BOOKED']
+
+export const MAX_VEHICLE_IMAGES = 10
 
 export type VehicleType = 'CAR' | 'VAN' | 'MINIBUS' | 'BUS' | 'SUV' | 'TUKTUK'
 
@@ -14,6 +26,14 @@ export interface VehicleRequestDto {
   registrationNumber: string
   seatingCapacity: number
   pricePerDay: number
+  airConditioned?: boolean
+  facilities?: string[]
+  imageUrls?: string[]
+  driverName?: string
+  driverPhone?: string
+  insuranceExpiry?: string | null
+  lastMaintenanceDate?: string | null
+  nextMaintenanceDate?: string | null
 }
 
 // Matches com.tourlk.dto.VehicleResponseDto
@@ -28,6 +48,13 @@ export interface VehicleResponseDto {
   status: VehicleStatus
   driverId: number
   driverName: string
+  driverPhone: string | null
+  airConditioned: boolean
+  facilities: string[]
+  imageUrls: string[]
+  insuranceExpiry: string | null
+  lastMaintenanceDate: string | null
+  nextMaintenanceDate: string | null
 }
 
 // Matches com.tourlk.dto.VehicleHireRequestDto

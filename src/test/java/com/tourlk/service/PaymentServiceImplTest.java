@@ -1,9 +1,7 @@
 package com.tourlk.service;
 
 import com.stripe.model.PaymentIntent;
-import com.stripe.model.Refund;
 import com.stripe.param.PaymentIntentCreateParams;
-import com.stripe.param.RefundCreateParams;
 import com.tourlk.dto.BookingPackageSummaryDto;
 import com.tourlk.dto.BookingResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
@@ -70,6 +68,10 @@ class PaymentServiceImplTest {
     private RoomReservationService roomReservationService;
     @Mock
     private VehicleHireService vehicleHireService;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private RefundGateway refundGateway;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -102,7 +104,7 @@ class PaymentServiceImplTest {
                     .thenAnswer(inv -> withId(inv.getArgument(0), 77L));
 
             PaymentIntent intent = stripeIntent("pi_booking", "cs_booking");
-            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"));
+            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"), null);
 
             PaymentIntentResponseDto result;
             ArgumentCaptor<PaymentIntentCreateParams> paramsCaptor =
@@ -143,7 +145,7 @@ class PaymentServiceImplTest {
 
             PaymentIntent intent = stripeIntent("pi_res", "cs_res");
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"));
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
 
             try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
                 stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
@@ -164,7 +166,7 @@ class PaymentServiceImplTest {
 
             PaymentIntent intent = stripeIntent("pi_hire", "cs_hire");
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"));
+                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"), null);
 
             try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
                 stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
@@ -181,7 +183,7 @@ class PaymentServiceImplTest {
             when(bookingService.getBookingById(10L, tourist))
                     .thenReturn(booking(1L, BookingStatus.PENDING, "100.00", 2)); // real 200.00
 
-            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("150.00"));
+            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("150.00"), null);
 
             try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
                 assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
@@ -192,13 +194,29 @@ class PaymentServiceImplTest {
         }
 
         @Test
+        void createPaymentIntent_bookingUsesStoredTotalPrice_notTheCurrentPackagePrice() {
+            BookingResponseDto booking = booking(1L, BookingStatus.PENDING, "100.00", 2); // booked at 200.00
+            booking.getTourPackage().setPrice(new BigDecimal("175.00")); // package repriced since
+            when(bookingService.getBookingById(10L, tourist)).thenReturn(booking);
+
+            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("350.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
+                        .isInstanceOf(PaymentAmountMismatchException.class)
+                        .hasMessageContaining("expected 200.00");
+                stripe.verifyNoInteractions();
+            }
+        }
+
+        @Test
         void createPaymentIntent_reservationAmountMismatch_throws() {
             when(roomReservationService.getReservationById(20L, tourist))
                     .thenReturn(reservation(1L, RoomReservationStatus.PENDING, "50.00", 2,
                             LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 4))); // real 300.00
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("299.99"));
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("299.99"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(PaymentAmountMismatchException.class);
@@ -211,7 +229,7 @@ class PaymentServiceImplTest {
                     .thenReturn(hire(1L, VehicleHireStatus.PENDING, "450.00"));
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("400.00"));
+                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("400.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(PaymentAmountMismatchException.class);
@@ -223,7 +241,7 @@ class PaymentServiceImplTest {
             when(bookingService.getBookingById(10L, tourist))
                     .thenReturn(booking(999L, BookingStatus.PENDING, "100.00", 2));
 
-            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"));
+            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(AccessDeniedException.class);
@@ -237,7 +255,7 @@ class PaymentServiceImplTest {
                             LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 4)));
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"));
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(AccessDeniedException.class);
@@ -249,7 +267,7 @@ class PaymentServiceImplTest {
                     .thenReturn(hire(999L, VehicleHireStatus.PENDING, "450.00"));
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"));
+                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(AccessDeniedException.class);
@@ -260,7 +278,7 @@ class PaymentServiceImplTest {
             when(bookingService.getBookingById(10L, tourist))
                     .thenReturn(booking(1L, BookingStatus.CONFIRMED, "100.00", 2));
 
-            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"));
+            PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(PaymentRequiredException.class);
@@ -274,7 +292,7 @@ class PaymentServiceImplTest {
                             LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 4)));
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"));
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(PaymentRequiredException.class);
@@ -286,7 +304,7 @@ class PaymentServiceImplTest {
                     .thenReturn(hire(1L, VehicleHireStatus.CANCELLED, "450.00"));
 
             PaymentRequestDto request =
-                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"));
+                    new PaymentRequestDto(PayableType.VEHICLE_HIRE, 30L, new BigDecimal("450.00"), null);
 
             assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
                     .isInstanceOf(PaymentRequiredException.class);
@@ -421,35 +439,28 @@ class PaymentServiceImplTest {
     class RefundPayment {
 
         @Test
-        void refundPayment_succeededPayment_callsStripeAndMarksRefunded() {
+        void refundPayment_succeededPayment_delegatesToRefundGatewayForFullAmount() {
             Payment payment = pendingPayment(PayableType.BOOKING, 10L, "pi_1");
             payment.setStatus(PaymentStatus.SUCCEEDED);
             when(paymentRepository.findById(55L)).thenReturn(Optional.of(payment));
-            when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
+            Payment refunded = pendingPayment(PayableType.BOOKING, 10L, "pi_1");
+            refunded.setStatus(PaymentStatus.REFUNDED);
+            when(refundGateway.refund(payment, payment.getAmount())).thenReturn(refunded);
 
-            PaymentResponseDto result;
-            try (MockedStatic<Refund> refunds = mockStatic(Refund.class)) {
-                refunds.when(() -> Refund.create(any(RefundCreateParams.class))).thenReturn(mock(Refund.class));
-
-                result = paymentService.refundPayment(55L);
-
-                refunds.verify(() -> Refund.create(any(RefundCreateParams.class)));
-            }
+            PaymentResponseDto result = paymentService.refundPayment(55L);
 
             assertThat(result.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+            verify(refundGateway).refund(payment, new BigDecimal("200.00"));
         }
 
         @Test
-        void refundPayment_pendingPayment_throwsInvalidStatusTransitionAndNeverCallsStripe() {
+        void refundPayment_pendingPayment_throwsInvalidStatusTransitionAndNeverCallsGateway() {
             Payment payment = pendingPayment(PayableType.BOOKING, 10L, "pi_1");
             when(paymentRepository.findById(55L)).thenReturn(Optional.of(payment));
 
-            try (MockedStatic<Refund> refunds = mockStatic(Refund.class)) {
-                assertThatThrownBy(() -> paymentService.refundPayment(55L))
-                        .isInstanceOf(InvalidStatusTransitionException.class);
-                refunds.verifyNoInteractions();
-            }
+            assertThatThrownBy(() -> paymentService.refundPayment(55L))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+            verify(refundGateway, never()).refund(any(), any());
             verify(paymentRepository, never()).save(any());
         }
 
@@ -482,6 +493,7 @@ class PaymentServiceImplTest {
                 .touristId(touristId)
                 .status(status)
                 .numberOfTravelers(travelers)
+                .totalPrice(new BigDecimal(packagePrice).multiply(BigDecimal.valueOf(travelers)))
                 .tourPackage(BookingPackageSummaryDto.builder()
                         .id(5L)
                         .title("Hill Country Explorer")

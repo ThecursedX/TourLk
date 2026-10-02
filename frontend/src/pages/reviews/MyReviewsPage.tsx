@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deleteReview, getMyReviews } from '../../api/reviewApi'
 import ReviewCard from '../../components/reviews/ReviewCard'
+import ReviewEditHistoryModal from '../../components/reviews/ReviewEditHistoryModal'
 import ReviewForm from '../../components/reviews/ReviewForm'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
@@ -13,6 +14,7 @@ export default function MyReviewsPage() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [historyId, setHistoryId] = useState<number | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -66,6 +68,7 @@ export default function MyReviewsPage() {
                 existingReviewId={review.id}
                 initialRating={review.rating}
                 initialComment={review.comment ?? ''}
+                initialImageUrls={review.imageUrls}
                 onSuccess={(updated) => {
                   setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
                   setEditingId(null)
@@ -78,27 +81,45 @@ export default function MyReviewsPage() {
               key={review.id}
               review={review}
               footer={
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    variant="secondary"
-                    disabled={busyId === review.id}
-                    onClick={() => setEditingId(review.id)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={busyId === review.id}
-                    onClick={() => handleDelete(review.id)}
-                  >
-                    Delete
-                  </Button>
+                <div className="flex flex-col gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      disabled={busyId === review.id || !review.editable}
+                      onClick={() => setEditingId(review.id)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={busyId === review.id}
+                      onClick={() => handleDelete(review.id)}
+                    >
+                      Delete
+                    </Button>
+                    <Button variant="ghost" onClick={() => setHistoryId(review.id)}>
+                      View History
+                    </Button>
+                  </div>
+                  {!review.editable && (
+                    <p className="text-xs text-slate-500">
+                      Editing closed{' '}
+                      {review.editDeadline
+                        ? `on ${new Date(review.editDeadline).toLocaleDateString()}`
+                        : ''}{' '}
+                      — reviews can only be edited within 30 days of posting.
+                    </p>
+                  )}
                 </div>
               }
             />
           ),
         )}
       </div>
+
+      {historyId !== null && (
+        <ReviewEditHistoryModal reviewId={historyId} onClose={() => setHistoryId(null)} />
+      )}
     </div>
   )
 }

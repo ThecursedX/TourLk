@@ -13,10 +13,14 @@ const ROLE_LINKS: Partial<Record<Role, SidebarLink[]>> = {
     { to: '/reservations/mine', label: 'My Reservations' },
     { to: '/hires/mine', label: 'My Hires' },
     { to: '/payments/mine', label: 'My Payments' },
+    { to: '/payment-methods', label: 'Saved Cards' },
     { to: '/reviews/mine', label: 'My Reviews' },
     { to: '/support/mine', label: 'My Tickets' },
   ],
-  GUIDE: [{ to: '/packages/mine', label: 'My Packages' }],
+  GUIDE: [
+    { to: '/packages/mine', label: 'My Packages' },
+    { to: '/packages/mine/bookings', label: 'Package Bookings' },
+  ],
   HOTEL_PARTNER: [
     { to: '/accommodations/mine', label: 'My Properties' },
     { to: '/accommodations/owner/reservations', label: 'Reservations' },

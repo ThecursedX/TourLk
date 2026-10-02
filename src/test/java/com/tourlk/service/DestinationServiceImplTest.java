@@ -10,6 +10,7 @@ import com.tourlk.enums.Province;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.DestinationInactiveException;
 import com.tourlk.exception.DuplicateDestinationException;
+import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.AccommodationRepository;
 import com.tourlk.repo.DestinationRepository;
@@ -22,6 +23,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,7 +37,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link DestinationServiceImpl}: the name-uniqueness guard,
- * the deactivate/reactivate toggle, and the "selectable only while ACTIVE"
+ * the deactivate/reactivate toggle, and the "selectable only while PUBLISHED/TEMPORARILY_CLOSED"
  * rule the Tour Package / Accommodation modules rely on. Repositories mocked.
  */
 @ExtendWith(MockitoExtension.class)
@@ -64,8 +66,21 @@ class DestinationServiceImplTest {
                 .build();
     }
 
+    private static DestinationRequestDto req(String name, String description, Province province, String district,
+                                             String category, String bestTime, List<String> imageUrls) {
+        DestinationRequestDto dto = new DestinationRequestDto();
+        dto.setName(name);
+        dto.setDescription(description);
+        dto.setProvince(province);
+        dto.setDistrict(district);
+        dto.setCategory(category);
+        dto.setBestTimeToVisit(bestTime);
+        dto.setImageUrls(imageUrls);
+        return dto;
+    }
+
     private DestinationRequestDto request() {
-        return new DestinationRequestDto("Ella", "Nine Arch Bridge and tea country",
+        return req("Ella", "Nine Arch Bridge and tea country",
                 Province.UVA, "Badulla", "Nature", "January to March", List.of());
     }
 
@@ -83,13 +98,13 @@ class DestinationServiceImplTest {
     class Create {
 
         @Test
-        void createDestination_uniqueName_savesAsActive() {
+        void createDestination_uniqueName_savesAsPublished() {
             when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
             expectSaveEchoed();
 
             DestinationResponseDto result = service.createDestination(request());
 
-            assertThat(result.getStatus()).isEqualTo(DestinationStatus.ACTIVE);
+            assertThat(result.getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
             assertThat(result.getName()).isEqualTo("Ella");
         }
 
@@ -97,7 +112,7 @@ class DestinationServiceImplTest {
         void createDestination_savesProvinceDistrictCategoryAndKeepsLegacyRegionInStep() {
             when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
             expectSaveEchoed();
-            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+            DestinationRequestDto request = req("Ella", null,
                     Province.UVA, "badulla", " Nature ", null,
                     List.of(" https://example.com/a.jpg ", "", "http://example.com/b.jpg"));
 
@@ -114,7 +129,7 @@ class DestinationServiceImplTest {
         @Test
         void createDestination_districtNotInProvince_throwsBadRequest() {
             when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
-            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+            DestinationRequestDto request = req("Ella", null,
                     Province.UVA, "Colombo", "Nature", null, List.of());
 
             assertThatThrownBy(() -> service.createDestination(request))
@@ -125,7 +140,7 @@ class DestinationServiceImplTest {
         @Test
         void createDestination_imageUrlNotHttp_throwsBadRequest() {
             when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
-            DestinationRequestDto request = new DestinationRequestDto("Ella", null,
+            DestinationRequestDto request = req("Ella", null,
                     Province.UVA, "Badulla", "Nature", null, List.of("ftp://example.com/a.jpg"));
 
             assertThatThrownBy(() -> service.createDestination(request))
@@ -136,7 +151,7 @@ class DestinationServiceImplTest {
         @Test
         void createDestination_duplicateName_throwsDuplicateDestination() {
             when(destinationRepository.findByNameIgnoreCase("Ella"))
-                    .thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
 
             assertThatThrownBy(() -> service.createDestination(request()))
                     .isInstanceOf(DuplicateDestinationException.class);
@@ -149,9 +164,9 @@ class DestinationServiceImplTest {
 
         @Test
         void updateDestination_sameEntityKeepingItsName_isAllowed() {
-            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
             when(destinationRepository.findByNameIgnoreCase("Ella"))
-                    .thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
             expectSaveEchoed();
 
             assertThat(service.updateDestination(1L, request()).getRegion()).isEqualTo("Uva Province");
@@ -159,9 +174,9 @@ class DestinationServiceImplTest {
 
         @Test
         void updateDestination_nameTakenByAnother_throwsDuplicateDestination() {
-            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
             when(destinationRepository.findByNameIgnoreCase("Ella"))
-                    .thenReturn(Optional.of(destination(2L, DestinationStatus.ACTIVE)));
+                    .thenReturn(Optional.of(destination(2L, DestinationStatus.PUBLISHED)));
 
             assertThatThrownBy(() -> service.updateDestination(1L, request()))
                     .isInstanceOf(DuplicateDestinationException.class);
@@ -181,7 +196,7 @@ class DestinationServiceImplTest {
 
         @Test
         void deactivateDestination_marksInactive() {
-            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
             expectSaveEchoed();
 
             assertThat(service.deactivateDestination(1L).getStatus()).isEqualTo(DestinationStatus.INACTIVE);
@@ -192,7 +207,7 @@ class DestinationServiceImplTest {
             when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.INACTIVE)));
             expectSaveEchoed();
 
-            assertThat(service.reactivateDestination(1L).getStatus()).isEqualTo(DestinationStatus.ACTIVE);
+            assertThat(service.reactivateDestination(1L).getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
         }
     }
 
@@ -201,7 +216,7 @@ class DestinationServiceImplTest {
 
         @Test
         void requireSelectableDestination_active_returnsEntity() {
-            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
 
             assertThat(service.requireSelectableDestination(1L).getId()).isEqualTo(1L);
         }
@@ -224,12 +239,267 @@ class DestinationServiceImplTest {
     }
 
     @Nested
+    class ExtendedFieldsAndLifecycle {
+
+        private DestinationRequestDto fullRequest() {
+            DestinationRequestDto dto = request();
+            dto.setOpeningHours("Daily 6am-6pm");
+            dto.setEntryFee(new java.math.BigDecimal("1500.00"));
+            dto.setVisitorRules("No drones. Modest dress.");
+            dto.setLatitude(6.8667);
+            dto.setLongitude(81.0466);
+            return dto;
+        }
+
+        @Test
+        void createDestination_persistsExtendedFields() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            expectSaveEchoed();
+
+            DestinationResponseDto result = service.createDestination(fullRequest());
+
+            assertThat(result.getOpeningHours()).isEqualTo("Daily 6am-6pm");
+            assertThat(result.getEntryFee()).isEqualByComparingTo("1500.00");
+            assertThat(result.getVisitorRules()).isEqualTo("No drones. Modest dress.");
+            assertThat(result.getLatitude()).isEqualTo(6.8667);
+            assertThat(result.getLongitude()).isEqualTo(81.0466);
+        }
+
+        @Test
+        void createDestination_latitudeWithoutLongitude_throwsBadRequest() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            DestinationRequestDto dto = request();
+            dto.setLatitude(6.8);
+
+            assertThatThrownBy(() -> service.createDestination(dto)).isInstanceOf(BadRequestException.class);
+            verify(destinationRepository, never()).save(any());
+        }
+
+        @Test
+        void createDestination_saveAsDraft_createsDraft() {
+            when(destinationRepository.findByNameIgnoreCase("Ella")).thenReturn(Optional.empty());
+            expectSaveEchoed();
+            DestinationRequestDto dto = request();
+            dto.setSaveAsDraft(true);
+
+            assertThat(service.createDestination(dto).getStatus()).isEqualTo(DestinationStatus.DRAFT);
+        }
+
+        @Test
+        void submitForReview_draft_becomesPendingReview() {
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.DRAFT)));
+            expectSaveEchoed();
+
+            assertThat(service.submitForReview(1L).getStatus()).isEqualTo(DestinationStatus.PENDING_REVIEW);
+        }
+
+        @Test
+        void submitForReview_notDraft_throwsInvalidStatusTransition() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
+
+            assertThatThrownBy(() -> service.submitForReview(1L))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void publishDestination_pendingReview_becomesPublished() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PENDING_REVIEW)));
+            expectSaveEchoed();
+
+            assertThat(service.publishDestination(1L).getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
+        }
+
+        @Test
+        void closeTemporarily_published_storesReasonAndEndDate() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
+            expectSaveEchoed();
+            LocalDate until = LocalDate.now().plusDays(10);
+
+            DestinationResponseDto result = service.closeTemporarily(1L, "  Bridge repairs ", until);
+
+            assertThat(result.getStatus()).isEqualTo(DestinationStatus.TEMPORARILY_CLOSED);
+            assertThat(result.getClosureReason()).isEqualTo("Bridge repairs");
+            assertThat(result.getClosureUntil()).isEqualTo(until);
+        }
+
+        @Test
+        void closeTemporarily_blankReason_throwsBadRequest() {
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "  ", null))
+                    .isInstanceOf(BadRequestException.class);
+            verify(destinationRepository, never()).save(any());
+        }
+
+        @Test
+        void closeTemporarily_endDateInThePast_throwsBadRequest() {
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", LocalDate.now().minusDays(1)))
+                    .isInstanceOf(BadRequestException.class);
+        }
+
+        @Test
+        void closeTemporarily_archived_throwsInvalidStatusTransition() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.ARCHIVED)));
+
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", null))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void reopenDestination_closed_becomesPublishedAndClearsClosure() {
+            Destination closed = destination(1L, DestinationStatus.TEMPORARILY_CLOSED);
+            closed.setClosureReason("Repairs");
+            closed.setClosureUntil(LocalDate.now().plusDays(3));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(closed));
+            expectSaveEchoed();
+
+            DestinationResponseDto result = service.reopenDestination(1L);
+
+            assertThat(result.getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
+            assertThat(result.getClosureReason()).isNull();
+            assertThat(result.getClosureUntil()).isNull();
+        }
+
+        @Test
+        void reopenExpiredClosures_reopensEachExpiredDestination() {
+            Destination expired = destination(1L, DestinationStatus.TEMPORARILY_CLOSED);
+            expired.setClosureReason("Repairs");
+            expired.setClosureUntil(LocalDate.now().minusDays(1));
+            when(destinationRepository.findByStatusAndClosureUntilBefore(
+                    DestinationStatus.TEMPORARILY_CLOSED, LocalDate.now())).thenReturn(List.of(expired));
+
+            assertThat(service.reopenExpiredClosures(LocalDate.now())).isEqualTo(1);
+            assertThat(expired.getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
+            assertThat(expired.getClosureReason()).isNull();
+            verify(destinationRepository).save(expired);
+        }
+
+        @Test
+        void archiveDestination_published_becomesArchived() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
+            expectSaveEchoed();
+
+            assertThat(service.archiveDestination(1L).getStatus()).isEqualTo(DestinationStatus.ARCHIVED);
+        }
+
+        @Test
+        void archiveDestination_alreadyArchived_throwsInvalidStatusTransition() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.ARCHIVED)));
+
+            assertThatThrownBy(() -> service.archiveDestination(1L))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void reactivateDestination_archived_becomesPublished() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.ARCHIVED)));
+            expectSaveEchoed();
+
+            assertThat(service.reactivateDestination(1L).getStatus()).isEqualTo(DestinationStatus.PUBLISHED);
+        }
+
+        @Test
+        void getById_archivedOrDraft_isNotFoundForPublicButVisibleToAdmin() {
+            for (DestinationStatus hidden : List.of(
+                    DestinationStatus.ARCHIVED, DestinationStatus.DRAFT, DestinationStatus.PENDING_REVIEW)) {
+                when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, hidden)));
+
+                assertThatThrownBy(() -> service.getById(1L, false))
+                        .isInstanceOf(ResourceNotFoundException.class);
+                assertThat(service.getById(1L, true).getStatus()).isEqualTo(hidden);
+            }
+        }
+
+        @Test
+        void getById_temporarilyClosed_isVisibleToPublic() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.TEMPORARILY_CLOSED)));
+
+            assertThat(service.getById(1L, false).getStatus()).isEqualTo(DestinationStatus.TEMPORARILY_CLOSED);
+        }
+
+        @Test
+        void requireSelectableDestination_temporarilyClosed_isAllowed_archivedIsNot() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.TEMPORARILY_CLOSED)));
+            when(destinationRepository.findById(2L))
+                    .thenReturn(Optional.of(destination(2L, DestinationStatus.ARCHIVED)));
+
+            assertThat(service.requireSelectableDestination(1L).getId()).isEqualTo(1L);
+            assertThatThrownBy(() -> service.requireSelectableDestination(2L))
+                    .isInstanceOf(DestinationInactiveException.class);
+        }
+    }
+
+    @Nested
+    class NearbySearch {
+
+        // From Colombo: Kandy is ~95 km away, Galle ~107 km, Ella ~131 km.
+        private Destination at(Long id, String name, Double lat, Double lng) {
+            Destination d = destination(id, DestinationStatus.PUBLISHED);
+            d.setName(name);
+            d.setLatitude(lat);
+            d.setLongitude(lng);
+            return d;
+        }
+
+        @Test
+        void searchNearby_returnsDestinationsWithinRadius_nearestFirst_withDistance() {
+            when(destinationRepository.findByStatusIn(any())).thenReturn(List.of(
+                    at(1L, "Galle", 6.0329, 80.2170),
+                    at(2L, "Kandy", 7.2906, 80.6337),
+                    at(3L, "Ella", 6.8667, 81.0466),
+                    at(4L, "Unmapped", null, null)));
+
+            List<DestinationResponseDto> result = service.searchNearby("6.9271,79.8612", 120.0);
+
+            assertThat(result).extracting(DestinationResponseDto::getName).containsExactly("Kandy", "Galle");
+            assertThat(result.get(0).getDistanceKm()).isBetween(90.0, 100.0);
+            assertThat(result.get(1).getDistanceKm()).isBetween(100.0, 115.0);
+        }
+
+        @Test
+        void searchNearby_defaultsRadiusTo50Km() {
+            when(destinationRepository.findByStatusIn(any())).thenReturn(List.of(at(2L, "Kandy", 7.2906, 80.6337)));
+
+            assertThat(service.searchNearby("6.9271,79.8612", null)).isEmpty();
+        }
+
+        @Test
+        void searchNearby_samePoint_isZeroKm() {
+            when(destinationRepository.findByStatusIn(any())).thenReturn(List.of(at(1L, "Galle", 6.0329, 80.2170)));
+
+            assertThat(service.searchNearby("6.0329,80.2170", 1.0).get(0).getDistanceKm()).isZero();
+        }
+
+        @Test
+        void searchNearby_malformedOrOutOfRangePoint_throwsBadRequest() {
+            for (String bad : List.of("abc", "6.9", "6.9,abc", "91,80", "6.9,181", ",")) {
+                assertThatThrownBy(() -> service.searchNearby(bad, 10.0))
+                        .as(bad).isInstanceOf(BadRequestException.class);
+            }
+        }
+
+        @Test
+        void searchNearby_nonPositiveOrHugeRadius_throwsBadRequest() {
+            assertThatThrownBy(() -> service.searchNearby("6.9,79.8", 0.0)).isInstanceOf(BadRequestException.class);
+            assertThatThrownBy(() -> service.searchNearby("6.9,79.8", -5.0)).isInstanceOf(BadRequestException.class);
+            assertThatThrownBy(() -> service.searchNearby("6.9,79.8", 50_000.0)).isInstanceOf(BadRequestException.class);
+        }
+    }
+
+    @Nested
     class Queries {
 
         @Test
-        void getAllActive_returnsOnlyActive_withoutCounts() {
-            when(destinationRepository.findByStatus(DestinationStatus.ACTIVE))
-                    .thenReturn(List.of(destination(1L, DestinationStatus.ACTIVE)));
+        void getAllActive_returnsPublicDestinations_withoutCounts() {
+            when(destinationRepository.findByStatusIn(any()))
+                    .thenReturn(List.of(destination(1L, DestinationStatus.PUBLISHED)));
 
             List<DestinationResponseDto> result = service.getAllActive();
 
@@ -239,11 +509,11 @@ class DestinationServiceImplTest {
 
         @Test
         void getById_populatesCounts() {
-            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.ACTIVE)));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
             when(tourPackageRepository.countByDestinationIdAndStatus(1L, PackageStatus.ACTIVE)).thenReturn(3L);
             when(accommodationRepository.countByLocationIdAndStatus(1L, AccommodationStatus.ACTIVE)).thenReturn(2L);
 
-            DestinationResponseDto result = service.getById(1L);
+            DestinationResponseDto result = service.getById(1L, true);
 
             assertThat(result.getActivePackageCount()).isEqualTo(3L);
             assertThat(result.getActiveAccommodationCount()).isEqualTo(2L);
@@ -251,11 +521,11 @@ class DestinationServiceImplTest {
 
         @Test
         void getByProvince_matchesStoredProvinceAndLegacyRegion_activeOnly() {
-            Destination stored = destination(1L, DestinationStatus.ACTIVE);
+            Destination stored = destination(1L, DestinationStatus.PUBLISHED);
             stored.setProvince(Province.UVA);
             // Legacy row: no province column value, only the old region text.
-            Destination legacy = destination(2L, DestinationStatus.ACTIVE);
-            Destination otherProvince = destination(3L, DestinationStatus.ACTIVE);
+            Destination legacy = destination(2L, DestinationStatus.PUBLISHED);
+            Destination otherProvince = destination(3L, DestinationStatus.PUBLISHED);
             otherProvince.setProvince(Province.SOUTHERN);
             otherProvince.setRegion("Southern Province");
             Destination inactive = destination(4L, DestinationStatus.INACTIVE);
@@ -282,7 +552,7 @@ class DestinationServiceImplTest {
         void searchByName_filtersOutInactive() {
             when(destinationRepository.findByNameContainingIgnoreCase("ell"))
                     .thenReturn(List.of(
-                            destination(1L, DestinationStatus.ACTIVE),
+                            destination(1L, DestinationStatus.PUBLISHED),
                             destination(2L, DestinationStatus.INACTIVE)));
 
             assertThat(service.searchByName("ell")).hasSize(1);

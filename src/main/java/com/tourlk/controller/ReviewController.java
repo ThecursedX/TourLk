@@ -1,10 +1,13 @@
 package com.tourlk.controller;
 
 import com.tourlk.dto.GuideReplyRequestDto;
+import com.tourlk.dto.GuideReviewStatsDto;
 import com.tourlk.dto.RatingSummaryDto;
+import com.tourlk.dto.ReviewEditHistoryResponseDto;
 import com.tourlk.dto.ReviewRequestDto;
 import com.tourlk.dto.ReviewResponseDto;
 import com.tourlk.entity.User;
+import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.service.ReviewService;
 import com.tourlk.service.UserService;
@@ -84,6 +87,14 @@ public class ReviewController {
         return ResponseEntity.ok(reviewService.getReviewsByUser(currentUser.getId()));
     }
 
+    /** The reviewer who owns this review, or an ADMIN; ownership is enforced in the service. */
+    @GetMapping("/{id}/history")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<ReviewEditHistoryResponseDto>> history(@PathVariable Long id,
+                                                                       Authentication authentication) {
+        return ResponseEntity.ok(reviewService.getEditHistory(id, currentUser(authentication)));
+    }
+
     /** GUIDE (owner of the reviewed package) or ADMIN; ownership is enforced in the service. */
     @PutMapping("/{id}/reply")
     @PreAuthorize("hasAnyRole('GUIDE','ADMIN')")
@@ -99,24 +110,42 @@ public class ReviewController {
         return ResponseEntity.ok(reviewService.removeGuideReply(id, currentUser(authentication)));
     }
 
-    /** ADMIN moderation view; pass {@code flaggedOnly=true} for just the flagged ones. */
+    /** Average rating, per-star breakdown and reply rate across every package the caller owns. */
+    @GetMapping("/guide/stats")
+    @PreAuthorize("hasRole('GUIDE')")
+    public ResponseEntity<GuideReviewStatsDto> guideStats(Authentication authentication) {
+        return ResponseEntity.ok(reviewService.getGuideStats(currentUser(authentication)));
+    }
+
+    /** ADMIN moderation view; pass {@code status} to narrow to one ReviewStatus. */
     @GetMapping("/admin")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<ReviewResponseDto>> allForAdmin(
-            @RequestParam(required = false) Boolean flaggedOnly) {
-        return ResponseEntity.ok(reviewService.getAllReviewsForAdmin(flaggedOnly));
+    public ResponseEntity<List<ReviewResponseDto>> allForAdmin(@RequestParam(required = false) ReviewStatus status) {
+        return ResponseEntity.ok(reviewService.getAllReviewsForAdmin(status));
     }
 
-    @PutMapping("/{id}/flag")
+    @PutMapping("/{id}/report")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ReviewResponseDto> flag(@PathVariable Long id) {
-        return ResponseEntity.ok(reviewService.flagReview(id));
+    public ResponseEntity<ReviewResponseDto> report(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.reportReview(id));
     }
 
-    @PutMapping("/{id}/unflag")
+    @PutMapping("/{id}/unreport")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ReviewResponseDto> unflag(@PathVariable Long id) {
-        return ResponseEntity.ok(reviewService.unflagReview(id));
+    public ResponseEntity<ReviewResponseDto> unreport(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.unreportReview(id));
+    }
+
+    @PutMapping("/{id}/hide")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ReviewResponseDto> hide(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.hideReview(id));
+    }
+
+    @PutMapping("/{id}/unhide")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ReviewResponseDto> unhide(@PathVariable Long id) {
+        return ResponseEntity.ok(reviewService.unhideReview(id));
     }
 
     private User currentUser(Authentication authentication) {

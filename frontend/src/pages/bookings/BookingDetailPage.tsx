@@ -2,16 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { getBookingById } from '../../api/bookingApi'
+import { useAuthStore } from '../../auth/authStore'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import BookingStatusBadge from '../../components/bookings/BookingStatusBadge'
+import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
 import type { BookingResponseDto } from '../../types/booking'
+
+const CANCELLABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'RESCHEDULED'])
 
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const user = useAuthStore((state) => state.user)
   const [booking, setBooking] = useState<BookingResponseDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -35,6 +41,9 @@ export default function BookingDetailPage() {
   if (error) return <p className="text-red-600">{error}</p>
   if (!booking) return null
 
+  const canCancel =
+    !!user && (user.role === 'ADMIN' || user.userId === booking.touristId) && CANCELLABLE.has(booking.status)
+
   return (
     <div className="flex flex-col gap-4">
       <Link to="/bookings/mine" className="text-sm font-medium text-blue-600 hover:underline">
@@ -56,9 +65,9 @@ export default function BookingDetailPage() {
             <dd className="text-slate-900">{booking.numberOfTravelers}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-slate-500">Price</dt>
+            <dt className="text-xs uppercase text-slate-500">Total price</dt>
             <dd className="text-slate-900">
-              {booking.tourPackage.price.toLocaleString(undefined, {
+              {booking.totalPrice.toLocaleString(undefined, {
                 style: 'currency',
                 currency: 'USD',
               })}
@@ -77,6 +86,11 @@ export default function BookingDetailPage() {
         {booking.previousTravelDate && (
           <p className="text-sm text-slate-500">Originally booked for {booking.previousTravelDate}</p>
         )}
+        {booking.status === 'REJECTED' && booking.rejectionReason && (
+          <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            Rejected: {booking.rejectionReason}
+          </p>
+        )}
         {booking.specialRequests && (
           <div>
             <dt className="text-xs uppercase text-slate-500">Special requests</dt>
@@ -87,6 +101,21 @@ export default function BookingDetailPage() {
           <Link to={`/checkout/booking/${booking.id}`} className="self-start">
             <Button>Pay Now</Button>
           </Link>
+        )}
+        {canCancel && !cancelling && (
+          <Button variant="secondary" className="self-start" onClick={() => setCancelling(true)}>
+            Cancel Booking
+          </Button>
+        )}
+        {canCancel && cancelling && (
+          <CancelBookingPanel
+            bookingId={booking.id}
+            onCancelled={(updated) => {
+              setBooking(updated)
+              setCancelling(false)
+            }}
+            onClose={() => setCancelling(false)}
+          />
         )}
       </Card>
     </div>

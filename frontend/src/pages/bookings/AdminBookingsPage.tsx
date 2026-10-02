@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from 'react'
 import {
   approveReschedule,
-  cancelBooking,
   completeBooking,
   confirmBooking,
   getBookingsByPackage,
+  rejectBooking,
   rejectReschedule,
 } from '../../api/bookingApi'
 import BookingCard from '../../components/bookings/BookingCard'
+import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
+import RejectReasonForm from '../../components/packages/RejectReasonForm'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import type { BookingResponseDto } from '../../types/booking'
@@ -23,6 +25,8 @@ export default function AdminBookingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const [rejectingId, setRejectingId] = useState<number | null>(null)
 
   const load = (id: string) => {
     if (!id) return
@@ -48,6 +52,7 @@ export default function AdminBookingsPage() {
     try {
       const updated = await action(id)
       setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)))
+      setRejectingId(null)
     } catch {
       setActionError('That action could not be completed. Please try again.')
     } finally {
@@ -87,44 +92,74 @@ export default function AdminBookingsPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {bookings.map((booking) => {
           const disabled = busyId === booking.id
+          const isCancellingThis = cancellingId === booking.id
+          const isRejectingThis = rejectingId === booking.id
           return (
             <BookingCard
               key={booking.id}
               booking={booking}
               footer={
-                <div className="flex flex-wrap gap-2">
-                  {booking.status === 'PENDING' && (
-                    <Button disabled={disabled} onClick={() => runAction(booking.id, confirmBooking)}>
-                      Confirm
-                    </Button>
-                  )}
-                  {booking.status === 'RESCHEDULE_REQUESTED' && (
-                    <>
-                      <Button disabled={disabled} onClick={() => runAction(booking.id, approveReschedule)}>
-                        Approve Reschedule
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {booking.status === 'PENDING' && !isRejectingThis && (
+                      <Button disabled={disabled} onClick={() => runAction(booking.id, confirmBooking)}>
+                        Confirm
                       </Button>
+                    )}
+                    {booking.status === 'PENDING' && !isRejectingThis && (
                       <Button
                         variant="secondary"
                         disabled={disabled}
-                        onClick={() => runAction(booking.id, rejectReschedule)}
+                        onClick={() => setRejectingId(booking.id)}
                       >
-                        Reject Reschedule
+                        Reject
                       </Button>
-                    </>
-                  )}
-                  {COMPLETABLE.has(booking.status) && (
-                    <Button disabled={disabled} onClick={() => runAction(booking.id, completeBooking)}>
-                      Complete
-                    </Button>
-                  )}
-                  {CANCELLABLE.has(booking.status) && (
-                    <Button
-                      variant="secondary"
+                    )}
+                    {booking.status === 'RESCHEDULE_REQUESTED' && (
+                      <>
+                        <Button disabled={disabled} onClick={() => runAction(booking.id, approveReschedule)}>
+                          Approve Reschedule
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          disabled={disabled}
+                          onClick={() => runAction(booking.id, rejectReschedule)}
+                        >
+                          Reject Reschedule
+                        </Button>
+                      </>
+                    )}
+                    {COMPLETABLE.has(booking.status) && (
+                      <Button disabled={disabled} onClick={() => runAction(booking.id, completeBooking)}>
+                        Complete
+                      </Button>
+                    )}
+                    {CANCELLABLE.has(booking.status) && !isCancellingThis && (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        onClick={() => setCancellingId(booking.id)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                  {isRejectingThis && (
+                    <RejectReasonForm
                       disabled={disabled}
-                      onClick={() => runAction(booking.id, cancelBooking)}
-                    >
-                      Cancel
-                    </Button>
+                      onCancel={() => setRejectingId(null)}
+                      onSubmit={(reason) => runAction(booking.id, (id) => rejectBooking(id, reason))}
+                    />
+                  )}
+                  {isCancellingThis && (
+                    <CancelBookingPanel
+                      bookingId={booking.id}
+                      onCancelled={(updated) => {
+                        setBookings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+                        setCancellingId(null)
+                      }}
+                      onClose={() => setCancellingId(null)}
+                    />
                   )}
                 </div>
               }

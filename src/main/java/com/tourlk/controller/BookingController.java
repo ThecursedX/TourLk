@@ -2,6 +2,8 @@ package com.tourlk.controller;
 
 import com.tourlk.dto.BookingRequestDto;
 import com.tourlk.dto.BookingResponseDto;
+import com.tourlk.dto.CancellationPreviewResponseDto;
+import com.tourlk.dto.RejectBookingRequestDto;
 import com.tourlk.dto.RescheduleRequestDto;
 import com.tourlk.entity.User;
 import com.tourlk.service.BookingService;
@@ -78,6 +80,20 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.cancelBooking(id, currentUser(authentication)));
     }
 
+    @GetMapping("/{id}/cancellation-preview")
+    public ResponseEntity<CancellationPreviewResponseDto> cancellationPreview(@PathVariable Long id,
+                                                                               Authentication authentication) {
+        return ResponseEntity.ok(bookingService.getCancellationPreview(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
+    public ResponseEntity<BookingResponseDto> reject(@PathVariable Long id,
+                                                      @Valid @RequestBody RejectBookingRequestDto request,
+                                                      Authentication authentication) {
+        return ResponseEntity.ok(bookingService.rejectBooking(id, request.getReason(), currentUser(authentication)));
+    }
+
     @PutMapping("/{id}/complete")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<BookingResponseDto> complete(@PathVariable Long id) {
@@ -92,9 +108,10 @@ public class BookingController {
     }
 
     @GetMapping("/package/{packageId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<BookingResponseDto>> byPackage(@PathVariable Long packageId) {
-        return ResponseEntity.ok(bookingService.getBookingsByPackage(packageId));
+    @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
+    public ResponseEntity<List<BookingResponseDto>> byPackage(@PathVariable Long packageId,
+                                                               Authentication authentication) {
+        return ResponseEntity.ok(bookingService.getBookingsByPackage(packageId, currentUser(authentication)));
     }
 
     @GetMapping("/{id}")

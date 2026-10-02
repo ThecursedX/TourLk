@@ -5,6 +5,7 @@ export type BookingStatus =
   | 'RESCHEDULED'
   | 'COMPLETED'
   | 'CANCELLED'
+  | 'REJECTED'
 
 // Matches com.tourlk.dto.BookingRequestDto
 export interface BookingRequestDto {
@@ -35,9 +36,26 @@ export interface BookingResponseDto {
   touristName: string
   travelDate: string
   numberOfTravelers: number
+  /** Fixed when the booking was made — what the tourist pays, even if the package is repriced later. */
+  totalPrice: number
   specialRequests: string | null
   status: BookingStatus
   previousTravelDate: string | null
   requestedTravelDate: string | null
+  /** Set when status is REJECTED. */
+  rejectionReason: string | null
   createdAt: string
+}
+
+// Matches com.tourlk.dto.RejectBookingRequestDto
+export interface RejectBookingRequestDto {
+  reason: string
+}
+
+// Matches com.tourlk.dto.CancellationPreviewResponseDto
+export interface CancellationPreviewResponseDto {
+  refundPercent: number
+  refundAmount: number
+  ruleText: string
+  hasPayment: boolean
 }

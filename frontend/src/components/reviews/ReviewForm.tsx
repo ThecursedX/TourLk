@@ -2,12 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import { createReview, updateReview } from '../../api/reviewApi'
 import Button from '../ui/Button'
+import TagInput from '../ui/TagInput'
 import StarRating from './StarRating'
 import type { ErrorResponse } from '../../types/auth'
 import type { ReviewResponseDto, ReviewableType } from '../../types/review'
 
 const MIN_LENGTH = 10
 const MAX_LENGTH = 500
+const MAX_IMAGES = 5
 
 interface ReviewFormProps {
   reviewableType: ReviewableType
@@ -16,6 +18,7 @@ interface ReviewFormProps {
   existingReviewId?: number
   initialRating?: number
   initialComment?: string
+  initialImageUrls?: string[]
   onSuccess: (review: ReviewResponseDto) => void
   onCancel?: () => void
 }
@@ -27,11 +30,13 @@ export default function ReviewForm({
   existingReviewId,
   initialRating = 0,
   initialComment = '',
+  initialImageUrls = [],
   onSuccess,
   onCancel,
 }: ReviewFormProps) {
   const [rating, setRating] = useState(initialRating)
   const [comment, setComment] = useState(initialComment)
+  const [imageUrls, setImageUrls] = useState<string[]>(initialImageUrls)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -40,6 +45,7 @@ export default function ReviewForm({
     const trimmed = comment.trim()
     if (trimmed.length < MIN_LENGTH) return `Review must be at least ${MIN_LENGTH} characters`
     if (trimmed.length > MAX_LENGTH) return `Review must be at most ${MAX_LENGTH} characters`
+    if (imageUrls.length > MAX_IMAGES) return `You can attach at most ${MAX_IMAGES} images`
     return null
   }
 
@@ -63,6 +69,7 @@ export default function ReviewForm({
         sourceBookingId,
         rating,
         comment: comment.trim(),
+        imageUrls,
       }
       const review = existingReviewId
         ? await updateReview(existingReviewId, request)
@@ -93,6 +100,12 @@ export default function ReviewForm({
       <span className="text-xs text-slate-500">
         {comment.trim().length}/{MAX_LENGTH}
       </span>
+      <TagInput
+        label={`Photo URLs (optional, up to ${MAX_IMAGES})`}
+        values={imageUrls}
+        onChange={setImageUrls}
+        placeholder="Paste an image URL and press Enter"
+      />
       {formError && <p className="text-sm text-red-600">{formError}</p>}
       <div className="flex gap-2">
         <Button type="submit" disabled={submitting}>

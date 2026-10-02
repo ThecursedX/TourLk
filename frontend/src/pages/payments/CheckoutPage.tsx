@@ -1,18 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { getBookingById } from '../../api/bookingApi'
 import { getReservationById } from '../../api/roomReservationApi'
 import { getHireById } from '../../api/vehicleHireApi'
 import { createPaymentIntent } from '../../api/paymentApi'
+import { getMyPaymentMethods } from '../../api/paymentMethodApi'
+import stripePromise from '../../lib/stripe'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import type { ErrorResponse } from '../../types/auth'
 import type { PayableType } from '../../types/payment'
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+import type { PaymentMethodResponseDto } from '../../types/paymentMethod'
 
 interface PayableSummary {
   title: string
@@ -70,6 +70,10 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState(false)
+  const [savedMethods, setSavedMethods] = useState<PaymentMethodResponseDto[]>([])
+  const [selectedSavedId, setSelectedSavedId] = useState<number | null>(null)
+  const [payingWithSaved, setPayingWithSaved] = useState(false)
+  const [savedCardError, setSavedCardError] = useState<string | null>(null)
 
   const normalizedType: PayableType =
     payableType === 'reservation'
@@ -93,7 +97,7 @@ export default function CheckoutPage() {
         if (normalizedType === 'BOOKING') {
           const booking = await getBookingById(id)
           title = booking.tourPackage.title
-          amount = booking.tourPackage.price * booking.numberOfTravelers
+          amount = booking.totalPrice
         } else if (normalizedType === 'ROOM_RESERVATION') {
           const reservation = await getReservationById(id)
           const nights =
@@ -116,6 +120,10 @@ export default function CheckoutPage() {
         })
         setClientSecret(intent.clientSecret)
         setPaymentId(intent.paymentId)
+
+        const methods = await getMyPaymentMethods().catch(() => [])
+        setSavedMethods(methods)
+        setSelectedSavedId(methods.find((m) => m.defaultCard)?.id ?? methods[0]?.id ?? null)
       } catch (err) {
         if (isAxiosError<ErrorResponse>(err) && err.response) {
           setError(err.response.data.message)
@@ -129,6 +137,52 @@ export default function CheckoutPage() {
 
     loadSummaryAndIntent()
   }, [payableId, normalizedType])
+
+  const handlePaySaved = async () => {
+    if (!selectedSavedId || !summary || !payableId) return
+    const stripe = await stripePromise
+    if (!stripe) return
+
+    setPayingWithSaved(true)
+    setSavedCardError(null)
+
+    try {
+      const intent = await createPaymentIntent({
+        payableType: normalizedType,
+        payableId: Number(payableId),
+        amount: summary.amount,
+        savedPaymentMethodId: selectedSavedId,
+      })
+
+      const { paymentIntent, error: retrieveError } = await stripe.retrievePaymentIntent(intent.clientSecret)
+      if (retrieveError) {
+        setSavedCardError(retrieveError.message ?? 'Payment could not be completed. Please try again.')
+        return
+      }
+
+      if (paymentIntent?.status === 'requires_action') {
+        const { error: actionError } = await stripe.handleNextAction({ clientSecret: intent.clientSecret })
+        if (actionError) {
+          setSavedCardError(actionError.message ?? 'Payment could not be completed. Please try again.')
+          return
+        }
+      } else if (paymentIntent?.status !== 'succeeded' && paymentIntent?.status !== 'processing') {
+        setSavedCardError('Payment could not be completed. Please try again.')
+        return
+      }
+
+      setSucceeded(true)
+      setTimeout(() => navigate('/payments/mine'), 1500)
+    } catch (err) {
+      if (isAxiosError<ErrorResponse>(err) && err.response) {
+        setSavedCardError(err.response.data.message)
+      } else {
+        setSavedCardError('Could not start payment. Please try again later.')
+      }
+    } finally {
+      setPayingWithSaved(false)
+    }
+  }
 
   if (loading) return <p className="text-slate-600">Loading checkout...</p>
   if (error) return <p className="text-red-600">{error}</p>
@@ -157,6 +211,30 @@ export default function CheckoutPage() {
         <p className="mb-6 text-2xl font-semibold text-slate-900">
           {summary.amount.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
         </p>
+
+        {savedMethods.length > 0 && (
+          <div className="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-6">
+            <p className="text-sm font-medium text-slate-700">Pay with a saved card</p>
+            {savedMethods.map((m) => (
+              <label key={m.id} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="radio"
+                  name="savedMethod"
+                  checked={selectedSavedId === m.id}
+                  onChange={() => setSelectedSavedId(m.id)}
+                />
+                {m.brand.toUpperCase()} &bull;&bull;&bull;&bull; {m.last4} (exp {m.expMonth}/{m.expYear})
+                {m.defaultCard ? ' · Default' : ''}
+              </label>
+            ))}
+            {savedCardError && <p className="text-sm text-red-600">{savedCardError}</p>}
+            <Button type="button" onClick={handlePaySaved} disabled={payingWithSaved || !selectedSavedId}>
+              {payingWithSaved ? 'Processing...' : 'Pay with selected card'}
+            </Button>
+            <p className="text-center text-xs text-slate-500">or pay with a new card below</p>
+          </div>
+        )}
+
         <Elements stripe={stripePromise} options={{ clientSecret }}>
           <PaymentForm
             onSuccess={() => {

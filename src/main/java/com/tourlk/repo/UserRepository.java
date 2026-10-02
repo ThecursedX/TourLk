@@ -2,6 +2,8 @@ package com.tourlk.repo;
 
 import com.tourlk.entity.User;
 import com.tourlk.enums.Role;
+import com.tourlk.enums.UserStatus;
+import com.tourlk.enums.VerificationStatus;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -16,7 +18,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByRole(Role role);
 
+    long countByRoleAndStatus(Role role, UserStatus status);
+
     /** Admin search: the term may appear in the name or the email (case-insensitive). */
     List<User> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCase(String name, String email, Sort sort);
+
+    List<User> findByVerificationStatus(VerificationStatus verificationStatus);
 
 }

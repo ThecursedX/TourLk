@@ -8,6 +8,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -38,6 +40,19 @@ public class DestinationResponseDto {
     private List<String> imageUrls;
 
     private DestinationStatus status;
+
+    private String openingHours;
+    private BigDecimal entryFee;
+    private String visitorRules;
+    private Double latitude;
+    private Double longitude;
+
+    /** Set only while TEMPORARILY_CLOSED. */
+    private String closureReason;
+    private LocalDate closureUntil;
+
+    /** Straight-line distance from the searched point; only set on nearby searches. */
+    private Double distanceKm;
 
     /**
      * Number of ACTIVE tour packages / accommodations currently at this

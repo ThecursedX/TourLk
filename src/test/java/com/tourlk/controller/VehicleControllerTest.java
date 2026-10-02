@@ -60,7 +60,7 @@ class VehicleControllerTest {
 
     private VehicleResponseDto sample() {
         return VehicleResponseDto.builder().id(20L).vehicleType(VehicleType.VAN)
-                .status(VehicleStatus.PENDING_APPROVAL).build();
+                .status(VehicleStatus.PENDING_VERIFICATION).build();
     }
 
     // --- POST /api/vehicles : hasRole('DRIVER') ---
@@ -117,6 +117,67 @@ class VehicleControllerTest {
     @WithMockUser(roles = "DRIVER")
     void approve_asDriver_isForbidden() throws Exception {
         mvc.perform(put("/api/vehicles/20/approve")).andExpect(status().isForbidden());
+        verifyNoInteractions(vehicleService);
+    }
+
+    // --- extended fields / validation ---
+
+    @Test
+    @WithMockUser(username = "d@example.com", roles = "DRIVER")
+    void create_withExtendedFields_returnsCreated() throws Exception {
+        stubCurrentUser(Role.DRIVER);
+        when(vehicleService.createVehicle(any(), any())).thenReturn(sample());
+        String body = """
+                {"vehicleType":"VAN","make":"Toyota","model":"HiAce","registrationNumber":"NA-1234",
+                 "seatingCapacity":9,"pricePerDay":90.00,"airConditioned":true,
+                 "facilities":["WiFi","USB charging"],"imageUrls":["http://img/1.jpg"],
+                 "driverName":"Kamal","driverPhone":"0771234567",
+                 "insuranceExpiry":"2027-01-31","lastMaintenanceDate":"2026-06-01","nextMaintenanceDate":"2026-12-01"}
+                """;
+
+        mvc.perform(post("/api/vehicles").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(username = "d@example.com", roles = "DRIVER")
+    void create_withMoreThanTenImages_returnsBadRequest() throws Exception {
+        stubCurrentUser(Role.DRIVER);
+        String urls = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(i -> "\"http://img/" + i + ".jpg\"").collect(java.util.stream.Collectors.joining(","));
+        String body = "{\"vehicleType\":\"VAN\",\"make\":\"Toyota\",\"model\":\"HiAce\","
+                + "\"registrationNumber\":\"NA-1234\",\"seatingCapacity\":9,\"pricePerDay\":90.00,"
+                + "\"imageUrls\":[" + urls + "]}";
+
+        mvc.perform(post("/api/vehicles").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(vehicleService);
+    }
+
+    // --- PUT /api/vehicles/{id}/submit and /maintenance : hasAnyRole('ADMIN','DRIVER') ---
+
+    @Test
+    @WithMockUser(username = "d@example.com", roles = "DRIVER")
+    void submit_asDriver_returnsOk() throws Exception {
+        stubCurrentUser(Role.DRIVER);
+        when(vehicleService.submitForVerification(anyLong(), any())).thenReturn(sample());
+
+        mvc.perform(put("/api/vehicles/20/submit")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "d@example.com", roles = "DRIVER")
+    void startMaintenance_asDriver_returnsOk() throws Exception {
+        stubCurrentUser(Role.DRIVER);
+        when(vehicleService.startMaintenance(anyLong(), any())).thenReturn(sample());
+
+        mvc.perform(put("/api/vehicles/20/maintenance")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void startMaintenance_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/vehicles/20/maintenance")).andExpect(status().isForbidden());
         verifyNoInteractions(vehicleService);
     }
 

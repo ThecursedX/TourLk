@@ -1,5 +1,8 @@
 package com.tourlk.service;
 
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.eq;
+import com.tourlk.enums.NotificationType;
 import com.tourlk.dto.RoomReservationRequestDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.entity.Accommodation;
@@ -48,6 +51,10 @@ class RoomReservationServiceImplTest {
     private RoomReservationRepository roomReservationRepository;
     @Mock
     private RoomRepository roomRepository;
+    @Mock
+    private AccommodationService accommodationService;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private RoomReservationServiceImpl service;
@@ -68,7 +75,7 @@ class RoomReservationServiceImplTest {
         accommodation = Accommodation.builder()
                 .id(50L).name("Ocean View")
                 .location(Destination.builder()
-                        .id(1L).name("Galle").region("Southern Province").status(DestinationStatus.ACTIVE).build())
+                        .id(1L).name("Galle").region("Southern Province").status(DestinationStatus.PUBLISHED).build())
                 .status(AccommodationStatus.ACTIVE).owner(hotelOwner)
                 .build();
         room = Room.builder()
@@ -128,6 +135,125 @@ class RoomReservationServiceImplTest {
 
         assertThatThrownBy(() -> service.createReservation(request, tourist))
                 .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void createReservation_temporarilyUnavailable_throwsBadRequestAndDoesNotSave() {
+        accommodation.setStatus(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+
+        RoomReservationRequestDto request = new RoomReservationRequestDto(
+                60L, LocalDate.now().plusDays(10), LocalDate.now().plusDays(13), 1);
+
+        assertThatThrownBy(() -> service.createReservation(request, tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("temporarily unavailable");
+        verify(roomReservationRepository, never()).save(any());
+    }
+
+    @Test
+    void createReservation_fullyBookedTonight_stillBookableForLaterDatesWithRoomsFree() {
+        accommodation.setStatus(AccommodationStatus.FULLY_BOOKED);
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoomReservationRequestDto request = new RoomReservationRequestDto(
+                60L, LocalDate.now().plusDays(10), LocalDate.now().plusDays(13), 1);
+
+        assertThat(service.createReservation(request, tourist).getStatus())
+                .isEqualTo(RoomReservationStatus.PENDING);
+    }
+
+    @Test
+    void createReservation_fillsRemainingInventoryExactly_isAllowed() {
+        // 5 rooms total, 3 already confirmed on overlapping dates; asking for the last 2 must succeed.
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(3);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoomReservationRequestDto request = new RoomReservationRequestDto(
+                60L, LocalDate.now().plusDays(10), LocalDate.now().plusDays(13), 2);
+
+        assertThat(service.createReservation(request, tourist).getNumberOfRooms()).isEqualTo(2);
+    }
+
+    @Test
+    void createReservation_oneRoomOverRemainingInventory_throwsRoomUnavailable() {
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(3);
+
+        RoomReservationRequestDto request = new RoomReservationRequestDto(
+                60L, LocalDate.now().plusDays(10), LocalDate.now().plusDays(13), 3);
+
+        assertThatThrownBy(() -> service.createReservation(request, tourist))
+                .isInstanceOf(RoomUnavailableException.class)
+                .hasMessageContaining("Only 2 room(s)");
+    }
+
+    @Test
+    void createReservation_checksOverlapOnlyAgainstConfirmedReservationsForTheRequestedDates() {
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+        LocalDate in = LocalDate.now().plusDays(10);
+        LocalDate out = LocalDate.now().plusDays(13);
+
+        service.createReservation(new RoomReservationRequestDto(60L, in, out, 1), tourist);
+
+        verify(roomReservationRepository).sumReservedRoomsOverlapping(60L, RoomReservationStatus.CONFIRMED, in, out);
+    }
+
+    @Test
+    void confirmReservation_roomFilledByAnotherConfirmationSinceCreation_throwsRoomUnavailable() {
+        // Two tourists created PENDING reservations for the last room; the first was confirmed,
+        // so confirming the second must re-check inventory under the room lock and refuse.
+        RoomReservation pending = reservation(RoomReservationStatus.PENDING, tourist);
+        pending.setNumberOfRooms(2);
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(pending));
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(4);
+
+        assertThatThrownBy(() -> service.confirmReservation(7L, hotelOwner))
+                .isInstanceOf(RoomUnavailableException.class);
+        assertThat(pending.getStatus()).isEqualTo(RoomReservationStatus.PENDING);
+        verify(roomReservationRepository, never()).save(any());
+        verify(accommodationService, never()).refreshAvailabilityStatus(any());
+    }
+
+    @Test
+    void confirmReservation_refreshesAccommodationAvailability() {
+        RoomReservation pending = reservation(RoomReservationStatus.PENDING, tourist);
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(pending));
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmReservation(7L, hotelOwner);
+
+        verify(accommodationService).refreshAvailabilityStatus(50L);
+    }
+
+    @Test
+    void cancelReservation_refreshesAccommodationAvailability() {
+        RoomReservation confirmed = reservation(RoomReservationStatus.CONFIRMED, tourist);
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(confirmed));
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cancelReservation(7L, tourist);
+
+        verify(accommodationService).refreshAvailabilityStatus(50L);
+    }
+
+    @Test
+    void completeReservation_refreshesAccommodationAvailability() {
+        RoomReservation confirmed = reservation(RoomReservationStatus.CONFIRMED, tourist);
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(confirmed));
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.completeReservation(7L, hotelOwner);
+
+        verify(accommodationService).refreshAvailabilityStatus(50L);
     }
 
     @Test
@@ -255,5 +381,70 @@ class RoomReservationServiceImplTest {
 
         assertThatThrownBy(() -> service.getReservationById(7L, stranger))
                 .isInstanceOf(AccessDeniedException.class);
+    }
+
+    // ------------------------------------------------------------------
+    // in-app notifications
+    // ------------------------------------------------------------------
+
+    @Test
+    void createReservation_notifiesThePropertyOwner() {
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.createReservation(new RoomReservationRequestDto(
+                60L, LocalDate.now().plusDays(10), LocalDate.now().plusDays(13), 1), tourist);
+
+        verify(notificationService).notify(eq(hotelOwner), eq(NotificationType.ROOM_RESERVATION_REQUESTED), any(), any(),
+                eq("/accommodations/owner/reservations"));
+    }
+
+    @Test
+    void confirmReservation_byOwner_notifiesOnlyTheTourist() {
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(reservation(RoomReservationStatus.PENDING, tourist)));
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmReservation(7L, hotelOwner);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.ROOM_RESERVATION_CONFIRMED), any(), any(), eq("/reservations/mine"));
+        verify(notificationService, never()).notify(eq(hotelOwner), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmReservationAfterPayment_notifiesBothSides() {
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(reservation(RoomReservationStatus.PENDING, tourist)));
+        when(roomRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(room));
+        when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(0);
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmReservationAfterPayment(7L);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.ROOM_RESERVATION_CONFIRMED), any(), any(), any());
+        verify(notificationService).notify(eq(hotelOwner), eq(NotificationType.ROOM_RESERVATION_CONFIRMED), any(), any(), any());
+    }
+
+    @Test
+    void cancelReservation_byTourist_notifiesTheOwner_andByOwnerNotifiesTheTourist() {
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(reservation(RoomReservationStatus.CONFIRMED, tourist)));
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+        service.cancelReservation(7L, tourist);
+        verify(notificationService).notify(eq(hotelOwner), eq(NotificationType.ROOM_RESERVATION_CANCELLED), any(), any(), any());
+
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(reservation(RoomReservationStatus.CONFIRMED, tourist)));
+        service.cancelReservation(7L, hotelOwner);
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.ROOM_RESERVATION_CANCELLED), any(), any(), any());
+    }
+
+    @Test
+    void completeReservation_notifiesTheTourist() {
+        when(roomReservationRepository.findById(7L)).thenReturn(Optional.of(reservation(RoomReservationStatus.CONFIRMED, tourist)));
+        when(roomReservationRepository.save(any(RoomReservation.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.completeReservation(7L, hotelOwner);
+
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.ROOM_RESERVATION_COMPLETED), any(), any(), any());
     }
 }
