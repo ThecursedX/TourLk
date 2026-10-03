@@ -1,5 +1,7 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.ClosureImpactDto;
+import com.tourlk.dto.ClosureSummaryDto;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.entity.Destination;
@@ -15,6 +17,7 @@ import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.AccommodationRepository;
 import com.tourlk.repo.DestinationRepository;
 import com.tourlk.repo.TourPackageRepository;
+import com.tourlk.util.ClosureWindow;
 import com.tourlk.util.GeoUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -53,6 +56,7 @@ public class DestinationServiceImpl implements DestinationService {
     private final DestinationRepository destinationRepository;
     private final TourPackageRepository tourPackageRepository;
     private final AccommodationRepository accommodationRepository;
+    private final DestinationClosureBookingService closureBookingService;
 
     @Override
     public DestinationResponseDto createDestination(DestinationRequestDto request) {
@@ -96,16 +100,15 @@ public class DestinationServiceImpl implements DestinationService {
     }
 
     @Override
-    public DestinationResponseDto closeTemporarily(Long id, String reason, LocalDate until) {
+    public DestinationResponseDto closeTemporarily(Long id, String reason, LocalDate from, LocalDate until) {
         if (reason == null || reason.isBlank()) {
             throw new BadRequestException("A closure reason is required");
         }
         if (reason.trim().length() > 500) {
             throw new BadRequestException("Closure reason must be at most 500 characters");
         }
-        if (until != null && until.isBefore(LocalDate.now())) {
-            throw new BadRequestException("The closure end date cannot be in the past");
-        }
+        LocalDate today = LocalDate.now();
+        validateClosureDates(from, until, today);
 
         Destination destination = getEntity(id);
         assertStatus(destination,
@@ -113,8 +116,38 @@ public class DestinationServiceImpl implements DestinationService {
 
         destination.setStatus(DestinationStatus.TEMPORARILY_CLOSED);
         destination.setClosureReason(reason.trim());
+        destination.setClosureFrom(from);
         destination.setClosureUntil(until);
-        return toResponse(destinationRepository.save(destination), true);
+        destination = destinationRepository.save(destination);
+
+        // The closure is saved first, so no new booking can slip into the window while the
+        // existing ones are cancelled (each in its own transaction).
+        ClosureSummaryDto summary = closureBookingService.cancelAffected(
+                id, ClosureWindow.of(from, until, today), reason.trim());
+
+        DestinationResponseDto response = toResponse(destination, true);
+        response.setClosureSummary(summary);
+        return response;
+    }
+
+    @Override
+    public ClosureImpactDto previewClosureImpact(Long id, LocalDate from, LocalDate until) {
+        LocalDate today = LocalDate.now();
+        validateClosureDates(from, until, today);
+        getEntity(id);
+        return new ClosureImpactDto(closureBookingService.countAffected(id, ClosureWindow.of(from, until, today)));
+    }
+
+    private void validateClosureDates(LocalDate from, LocalDate until, LocalDate today) {
+        if (from != null && from.isBefore(today)) {
+            throw new BadRequestException("The closure start date cannot be in the past");
+        }
+        if (until != null && until.isBefore(today)) {
+            throw new BadRequestException("The closure end date cannot be in the past");
+        }
+        if (from != null && until != null && from.isAfter(until)) {
+            throw new BadRequestException("The closure start date must be on or before the end date");
+        }
     }
 
     @Override
@@ -146,6 +179,7 @@ public class DestinationServiceImpl implements DestinationService {
 
         destination.setStatus(DestinationStatus.ARCHIVED);
         destination.setClosureReason(null);
+        destination.setClosureFrom(null);
         destination.setClosureUntil(null);
         return toResponse(destinationRepository.save(destination), true);
     }
@@ -162,6 +196,7 @@ public class DestinationServiceImpl implements DestinationService {
         }
         destination.setStatus(DestinationStatus.INACTIVE);
         destination.setClosureReason(null);
+        destination.setClosureFrom(null);
         destination.setClosureUntil(null);
         return toResponse(destinationRepository.save(destination), true);
     }
@@ -289,6 +324,7 @@ public class DestinationServiceImpl implements DestinationService {
     private void reopen(Destination destination) {
         destination.setStatus(DestinationStatus.PUBLISHED);
         destination.setClosureReason(null);
+        destination.setClosureFrom(null);
         destination.setClosureUntil(null);
     }
 
@@ -401,6 +437,7 @@ public class DestinationServiceImpl implements DestinationService {
                 .latitude(destination.getLatitude())
                 .longitude(destination.getLongitude())
                 .closureReason(destination.getClosureReason())
+                .closureFrom(destination.getClosureFrom())
                 .closureUntil(destination.getClosureUntil())
                 .createdAt(destination.getCreatedAt());
 

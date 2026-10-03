@@ -32,6 +32,8 @@ public class BookingResponseDto {
     private LocalDate requestedTravelDate;
     /** Set when status is REJECTED. */
     private String rejectionReason;
+    /** True once a SUCCEEDED payment exists for this booking. */
+    private boolean paid;
     private LocalDateTime createdAt;
 
 }

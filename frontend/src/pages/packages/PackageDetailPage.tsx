@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios'
 import { getPackageById } from '../../api/tourPackageApi'
 import { useAuthStore } from '../../auth/authStore'
 import BookNowForm from '../../components/bookings/BookNowForm'
+import DestinationClosureBanner from '../../components/destinations/DestinationClosureBanner'
 import Card from '../../components/ui/Card'
 import StatusBadge from '../../components/packages/StatusBadge'
 import ReviewList from '../../components/reviews/ReviewList'
@@ -78,6 +79,7 @@ export default function PackageDetailPage() {
             · {tourPackage.destination.district}, {formatProvince(tourPackage.destination.province)}
           </span>
         </p>
+        <DestinationClosureBanner destination={tourPackage.destination} />
         <p className="whitespace-pre-line text-slate-700">{tourPackage.description}</p>
         <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-4">
           <div>
@@ -176,7 +178,12 @@ export default function PackageDetailPage() {
             </p>
           )}
           {isAuthenticated && user?.role === 'TOURIST' && (
-            <BookNowForm tourPackageId={tourPackage.id} hasDepartures={tourPackage.hasDepartures} />
+            <BookNowForm
+              tourPackageId={tourPackage.id}
+              hasDepartures={tourPackage.hasDepartures}
+              destination={tourPackage.destination}
+              durationDays={tourPackage.durationDays}
+            />
           )}
         </Card>
       )}

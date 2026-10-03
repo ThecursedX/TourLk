@@ -70,6 +70,16 @@ public class User extends AuditableEntity {
     @Column(length = 1000)
     private String licenceDocumentUrl;
 
+    /** Stored licence document, relative to the licence upload directory. */
+    @Column(length = 255)
+    private String licenceDocumentPath;
+
+    /** Expiry date a 30-day warning was last sent for, so the daily job doesn't repeat it. */
+    private LocalDate licenceExpiringNotifiedFor;
+
+    /** Expiry date an "expired" notice was last sent for. */
+    private LocalDate licenceExpiredNotifiedFor;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

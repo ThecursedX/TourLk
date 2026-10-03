@@ -25,4 +25,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByVerificationStatus(VerificationStatus verificationStatus);
 
+    /** GUIDE/DRIVER accounts with the given status whose licence expires on or before the cutoff. */
+    List<User> findByVerificationStatusAndRoleInAndLicenceExpiryLessThanEqual(
+            VerificationStatus verificationStatus, java.util.Collection<Role> roles, java.time.LocalDate cutoff);
+
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { getMyBookings, requestReschedule } from '../../api/bookingApi'
 import { getMyReviews } from '../../api/reviewApi'
@@ -12,6 +13,7 @@ import type { BookingResponseDto } from '../../types/booking'
 import type { ReviewResponseDto } from '../../types/review'
 
 const RESCHEDULABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULED'])
+const PAYABLE = new Set(['PENDING', 'CONFIRMED'])
 const CANCELLABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'RESCHEDULED'])
 
 export default function MyBookingsPage() {
@@ -112,6 +114,11 @@ export default function MyBookingsPage() {
               footer={
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2">
+                    {PAYABLE.has(booking.status) && !booking.paid && (
+                      <Link to={`/checkout/booking/${booking.id}`}>
+                        <Button disabled={disabled}>Pay Now</Button>
+                      </Link>
+                    )}
                     {RESCHEDULABLE.has(booking.status) && !isReschedulingThis && !isCancellingThis && (
                       <Button
                         variant="secondary"

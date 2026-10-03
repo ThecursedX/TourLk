@@ -44,6 +44,8 @@ export interface BookingResponseDto {
   requestedTravelDate: string | null
   /** Set when status is REJECTED. */
   rejectionReason: string | null
+  /** True once a SUCCEEDED payment exists for this booking. */
+  paid: boolean
   createdAt: string
 }
 

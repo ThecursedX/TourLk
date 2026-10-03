@@ -6,6 +6,7 @@ import com.tourlk.dto.BookingResponseDto;
 import com.tourlk.dto.CancellationPreviewResponseDto;
 import com.tourlk.dto.RescheduleRequestDto;
 import com.tourlk.entity.Booking;
+import com.tourlk.entity.Destination;
 import com.tourlk.entity.PackageDeparture;
 import com.tourlk.entity.Payment;
 import com.tourlk.entity.TourPackage;
@@ -24,7 +25,9 @@ import com.tourlk.repo.BookingRepository;
 import com.tourlk.repo.PackageDepartureRepository;
 import com.tourlk.repo.PaymentRepository;
 import com.tourlk.repo.TourPackageRepository;
+import com.tourlk.util.ClosureWindow;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,6 +83,7 @@ public class BookingServiceImpl implements BookingService {
             throw new BadRequestException("This package is not currently open for bookings");
         }
 
+        assertDestinationOpenForTrip(tourPackage, request.getTravelDate());
         assertCapacityAvailable(tourPackage, request.getTravelDate(), request.getNumberOfTravelers(), true);
 
         Booking booking = Booking.builder()
@@ -105,8 +109,23 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     @Transactional
-    public BookingResponseDto confirmBooking(Long id) {
+    public BookingResponseDto confirmBooking(Long id, User currentUser) {
         Booking booking = getEntity(id);
+        assertPackageOwnerOrAdmin(booking, currentUser);
+        return confirm(booking);
+    }
+
+    @Override
+    @Transactional
+    public void confirmBookingAfterPayment(Long id) {
+        Booking booking = getEntity(id);
+        // The guide/admin may already have confirmed it before the tourist paid.
+        if (booking.getStatus() == BookingStatus.PENDING) {
+            confirm(booking);
+        }
+    }
+
+    private BookingResponseDto confirm(Booking booking) {
         assertStatus(booking, BookingStatus.PENDING, "confirmed");
 
         TourPackage tourPackage = getLockedPackage(booking.getTourPackage().getId());
@@ -135,6 +154,7 @@ public class BookingServiceImpl implements BookingService {
                             + booking.getStatus());
         }
 
+        assertDestinationOpenForTrip(booking.getTourPackage(), request.getNewTravelDate());
         // Early, unlocked feedback for the tourist; approveReschedule re-checks under the package lock.
         seatLimitFor(booking.getTourPackage(), request.getNewTravelDate(), true);
 
@@ -160,6 +180,8 @@ public class BookingServiceImpl implements BookingService {
         assertStatus(booking, BookingStatus.RESCHEDULE_REQUESTED, "approved");
 
         TourPackage tourPackage = getLockedPackage(booking.getTourPackage().getId());
+        // A closure may have been created since the request was made.
+        assertDestinationOpenForTrip(tourPackage, booking.getRequestedTravelDate());
         // Re-checked under the lock: the departure may have been removed since the request.
         assertCapacityAvailable(tourPackage, booking.getRequestedTravelDate(), booking.getNumberOfTravelers(), true);
 
@@ -284,7 +306,12 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public BookingResponseDto getBookingById(Long id, User currentUser) {
         Booking booking = getEntity(id);
-        assertOwnerOrAdmin(booking, currentUser);
+        boolean isTourist = booking.getTourist().getId().equals(currentUser.getId());
+        boolean isPackageOwner = booking.getTourPackage().getCreatedBy().getId().equals(currentUser.getId());
+        boolean isAdmin = currentUser.getRole() == Role.ADMIN;
+        if (!isTourist && !isPackageOwner && !isAdmin) {
+            throw new AccessDeniedException("You do not have permission to view this booking");
+        }
         return toResponse(booking);
     }
 
@@ -311,6 +338,14 @@ public class BookingServiceImpl implements BookingService {
                 .toList();
     }
 
+    @Override
+    public List<BookingResponseDto> getBookingsForGuide(User guide) {
+        return bookingRepository.findByTourPackageCreatedById(guide.getId(),
+                        Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     /**
      * Locks the package row for the rest of this transaction, serializing
      * every create/confirm/approve-reschedule capacity check for that
@@ -327,6 +362,20 @@ public class BookingServiceImpl implements BookingService {
     private TourPackage getLockedPackage(Long packageId) {
         return tourPackageRepository.findByIdForUpdate(packageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Tour package not found with id: " + packageId));
+    }
+
+    /**
+     * Rejects a trip whose date range (travelDate .. travelDate + durationDays - 1) overlaps the
+     * closure window of the package's destination. Tolerates a package without a destination.
+     */
+    private void assertDestinationOpenForTrip(TourPackage tourPackage, LocalDate travelDate) {
+        Destination destination = tourPackage.getDestination();
+        ClosureWindow.of(destination, LocalDate.now())
+                .filter(window -> window.overlaps(travelDate, tourPackage.getDurationDays()))
+                .ifPresent(window -> {
+                    throw new BadRequestException(destination.getName() + " is closed " + window.describe()
+                            + ", so this package can't be booked for those dates.");
+                });
     }
 
     private void assertCapacityAvailable(TourPackage tourPackage, LocalDate travelDate, int travelers,
@@ -474,6 +523,7 @@ public class BookingServiceImpl implements BookingService {
                 .previousTravelDate(booking.getPreviousTravelDate())
                 .requestedTravelDate(booking.getRequestedTravelDate())
                 .rejectionReason(booking.getRejectionReason())
+                .paid(findSucceededPayment(booking) != null)
                 .createdAt(booking.getCreatedAt())
                 .build();
     }

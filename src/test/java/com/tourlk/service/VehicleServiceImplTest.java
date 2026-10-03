@@ -121,6 +121,17 @@ class VehicleServiceImplTest {
         }
 
         @Test
+        void createVehicle_byDriverWithExpiredLicence_throwsLicenceNotVerified() {
+            driver.setVerificationStatus(VerificationStatus.VERIFIED);
+            driver.setLicenceExpiry(java.time.LocalDate.now().minusDays(1));
+
+            assertThatThrownBy(() -> service.createVehicle(request(), driver))
+                    .isInstanceOf(LicenceNotVerifiedException.class)
+                    .hasMessage("Your licence expired on " + driver.getLicenceExpiry() + ". Renew it on your profile.");
+            verify(vehicleRepository, never()).save(any());
+        }
+
+        @Test
         void createVehicle_byAdmin_skipsLicenceCheck() {
             expectSaveEchoed();
 

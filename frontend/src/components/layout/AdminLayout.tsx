@@ -26,7 +26,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
  * itself is only a flow placeholder — same width as the fixed nav — so the
  * content column is pushed over by the right amount without the two having
  * to coordinate any other way. Its `left` mirrors this page's own
- * `mx-auto max-w-5xl px-4` centering, so it lines up with the content
+ * `mx-auto max-w-7xl px-4` centering, so it lines up with the content
  * column's left edge at any viewport width.
  */
 export default function AdminLayout() {
@@ -34,7 +34,7 @@ export default function AdminLayout() {
     <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
       <aside className="shrink-0 lg:w-56">
         <nav
-          className="glass-panel flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-soft lg:fixed lg:top-28 lg:z-40 lg:max-h-[calc(100vh-8rem)] lg:w-56 lg:overflow-y-auto lg:left-[max(1rem,calc((100vw-64rem)/2+1rem))]"
+          className="glass-panel flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-soft lg:fixed lg:top-28 lg:z-40 lg:max-h-[calc(100vh-8rem)] lg:w-56 lg:overflow-y-auto lg:left-[max(1rem,calc((100vw-80rem)/2+1rem))]"
         >
           <span className="px-3 pb-2 pt-1 font-display text-xs font-bold uppercase tracking-wide text-slate-500">
             Admin

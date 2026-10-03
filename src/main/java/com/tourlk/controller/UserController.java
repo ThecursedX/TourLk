@@ -3,6 +3,7 @@ package com.tourlk.controller;
 import com.tourlk.dto.AuthResponseDto;
 import com.tourlk.dto.ChangePasswordRequestDto;
 import com.tourlk.dto.DeactivateAccountRequestDto;
+import com.tourlk.dto.LicenceDocumentDownload;
 import com.tourlk.dto.LicenceSubmitRequestDto;
 import com.tourlk.dto.RejectLicenceRequestDto;
 import com.tourlk.dto.UpdateProfileRequestDto;
@@ -12,11 +13,18 @@ import com.tourlk.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -104,11 +112,26 @@ public class UserController {
     // Licence verification (GUIDE / DRIVER submit, ADMIN reviews)
     // ------------------------------------------------------------------
 
-    @PutMapping("/me/licence")
+    /** Multipart: licenceNumber, licenceExpiry and a {@code file} (JPEG/PNG/WebP/PDF, max 5 MB). */
+    @PutMapping(value = "/me/licence", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('GUIDE','DRIVER')")
-    public ResponseEntity<UserResponseDto> submitLicence(@Valid @RequestBody LicenceSubmitRequestDto request,
+    public ResponseEntity<UserResponseDto> submitLicence(@Valid @ModelAttribute LicenceSubmitRequestDto request,
+                                                          @RequestPart(value = "file", required = false) MultipartFile file,
                                                           Authentication authentication) {
-        return ResponseEntity.ok(userService.submitLicence(currentUser(authentication), request));
+        return ResponseEntity.ok(userService.submitLicence(currentUser(authentication), request, file));
+    }
+
+    /** Owner or ADMIN only; images and PDFs are served inline. */
+    @GetMapping("/{id}/licence-document")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Resource> licenceDocument(@PathVariable Long id, Authentication authentication) {
+        LicenceDocumentDownload download = userService.getLicenceDocument(id, currentUser(authentication));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(download.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline().filename(download.fileName()).build().toString())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(download.resource());
     }
 
     @GetMapping("/licences/pending")

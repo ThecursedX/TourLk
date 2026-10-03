@@ -19,6 +19,9 @@ public class DestinationClosureRequestDto {
     @Size(max = 500, message = "Closure reason must be at most 500 characters")
     private String reason;
 
+    /** First day of the closure; optional (defaults to today). May not be in the past or after {@code until}. */
+    private LocalDate from;
+
     /** Last day of the closure; optional. The destination reopens automatically the day after. */
     private LocalDate until;
 

@@ -22,6 +22,8 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const isHomepage = location.pathname === '/' || location.pathname === '/home'
+  // Admin tables/forms need more room than the reading-width container used elsewhere.
+  const isAdminRoute = location.pathname.startsWith('/admin')
 
   return (
     <div className={`relative min-h-screen ${isHomepage ? 'bg-slate-50' : ''}`}>
@@ -36,7 +38,9 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       )}
       <Navbar />
-      <main className={`relative mx-auto max-w-5xl px-4 ${isHomepage ? '' : 'pt-24 pb-8'}`}>{children}</main>
+      <main
+        className={`relative mx-auto px-4 ${isAdminRoute ? 'max-w-7xl' : 'max-w-5xl'} ${isHomepage ? '' : 'pt-24 pb-8'}`}
+      >{children}</main>
     </div>
   )
 }

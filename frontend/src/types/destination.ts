@@ -80,7 +80,22 @@ export interface DestinationRequestDto {
 // Matches com.tourlk.dto.DestinationClosureRequestDto
 export interface DestinationClosureRequestDto {
   reason: string
+  // Both optional: from defaults to today, until to "until reopened manually".
+  from?: string
   until?: string
+}
+
+// Matches com.tourlk.dto.ClosureSummaryDto
+export interface ClosureSummaryDto {
+  cancelledBookings: number
+  refundedCount: number
+  failedRefunds: number
+  failedBookingIds: number[]
+}
+
+// Matches com.tourlk.dto.ClosureImpactDto
+export interface ClosureImpactDto {
+  affectedBookings: number
 }
 
 // Matches com.tourlk.dto.DestinationResponseDto
@@ -101,7 +116,10 @@ export interface DestinationResponseDto {
   longitude: number | null
   // Set only while TEMPORARILY_CLOSED.
   closureReason: string | null
+  closureFrom: string | null
   closureUntil: string | null
+  // Only on the response to closing a destination.
+  closureSummary?: ClosureSummaryDto | null
   // Set only on nearby searches.
   distanceKm: number | null
   // Populated on admin / detail responses; null on lightweight lists.
@@ -120,6 +138,9 @@ export interface DestinationSummary {
   province: Province
   district: string
   status: DestinationStatus
+  closureReason?: string | null
+  closureFrom?: string | null
+  closureUntil?: string | null
 }
 
 export interface DestinationBrowseParams {

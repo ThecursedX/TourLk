@@ -3,6 +3,7 @@ import { getPendingLicences, rejectLicence, verifyLicence } from '../../api/user
 import RejectReasonForm from '../../components/packages/RejectReasonForm'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import LicenceDocumentLink from '../../components/users/LicenceDocumentLink'
 import type { UserResponseDto } from '../../types/user'
 
 export default function AdminLicenceVerificationsPage() {
@@ -78,14 +79,7 @@ export default function AdminLicenceVerificationsPage() {
                     <dd>{user.licenceExpiry}</dd>
                   </div>
                   <div>
-                    <a
-                      href={user.licenceDocumentUrl ?? '#'}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-cobalt-700 underline"
-                    >
-                      View document
-                    </a>
+                    <LicenceDocumentLink user={user} />
                   </div>
                 </dl>
 

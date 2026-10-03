@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -142,11 +143,29 @@ class DestinationControllerTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void close_asAdmin_returnsOk() throws Exception {
-        when(destinationService.closeTemporarily(eq(1L), eq("Repairs"), any())).thenReturn(sample());
+        when(destinationService.closeTemporarily(eq(1L), eq("Repairs"), any(), any())).thenReturn(sample());
 
         mvc.perform(put("/api/destinations/1/close").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"Repairs\",\"until\":\"2099-01-31\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void closureImpact_asAdmin_returnsCount() throws Exception {
+        when(destinationService.previewClosureImpact(eq(1L), any(), any()))
+                .thenReturn(new com.tourlk.dto.ClosureImpactDto(3));
+
+        mvc.perform(get("/api/destinations/1/closure-impact?from=2099-01-01&until=2099-01-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.affectedBookings").value(3));
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void closureImpact_asTourist_isForbidden() throws Exception {
+        mvc.perform(get("/api/destinations/1/closure-impact")).andExpect(status().isForbidden());
+        verifyNoInteractions(destinationService);
     }
 
     @Test

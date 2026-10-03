@@ -43,6 +43,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -274,9 +275,9 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void createPaymentIntent_bookingNotPending_throwsPaymentRequired() {
+        void createPaymentIntent_bookingCancelled_throwsPaymentRequired() {
             when(bookingService.getBookingById(10L, tourist))
-                    .thenReturn(booking(1L, BookingStatus.CONFIRMED, "100.00", 2));
+                    .thenReturn(booking(1L, BookingStatus.CANCELLED, "100.00", 2));
 
             PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"), null);
 
@@ -327,7 +328,7 @@ class PaymentServiceImplTest {
             paymentService.handlePaymentSucceeded("pi_1");
 
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
-            verify(bookingService).confirmBooking(10L);
+            verify(bookingService).confirmBookingAfterPayment(10L);
             verify(invoiceRepository).save(any(Invoice.class));
         }
 
@@ -341,7 +342,7 @@ class PaymentServiceImplTest {
             paymentService.handlePaymentSucceeded("pi_1");
 
             // second delivery is a no-op: no double-confirm, no second invoice
-            verify(bookingService, times(1)).confirmBooking(10L);
+            verify(bookingService, times(1)).confirmBookingAfterPayment(10L);
             verify(invoiceRepository, times(1)).save(any(Invoice.class));
             verify(paymentRepository, times(1)).save(any(Payment.class));
         }
@@ -371,16 +372,16 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void handlePaymentSucceeded_confirmationFails_stillMarksPaidButSkipsInvoice() {
+        void handlePaymentSucceeded_confirmationFails_stillMarksPaidAndGeneratesInvoice() {
             Payment payment = pendingPayment(PayableType.BOOKING, 10L, "pi_1");
             when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(payment));
             when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(bookingService.confirmBooking(10L)).thenThrow(new RuntimeException("booking was cancelled"));
+            doThrow(new RuntimeException("booking was cancelled")).when(bookingService).confirmBookingAfterPayment(10L);
 
             paymentService.handlePaymentSucceeded("pi_1"); // swallowed — webhook must still be ACKed
 
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
-            verify(invoiceRepository, never()).save(any());
+            verify(invoiceRepository).save(any(Invoice.class));
         }
 
         @Test

@@ -30,6 +30,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.AccessDeniedException;
+import com.tourlk.exception.ResourceNotFoundException;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.access.AccessDeniedException;
+import com.tourlk.exception.ResourceNotFoundException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -83,6 +89,9 @@ class UserServiceImplTest {
     private com.tourlk.repo.AccommodationRepository accommodationRepository;
     @Mock
     private com.tourlk.repo.TourPackageRepository tourPackageRepository;
+
+    @Mock
+    private LicenceDocumentStorage licenceDocumentStorage;
 
     @InjectMocks
     private UserServiceImpl service;
@@ -276,8 +285,10 @@ class UserServiceImplTest {
         when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
+        when(licenceDocumentStorage.store(eq(2L), any())).thenReturn("2/new.pdf");
+
         UserResponseDto result = service.submitLicence(guide,
-                new LicenceSubmitRequestDto("DL-12345", LocalDate.now().plusYears(1), "https://docs.example.com/dl.pdf"));
+                new LicenceSubmitRequestDto("DL-12345", LocalDate.now().plusYears(1)), pdf());
 
         assertThat(result.getVerificationStatus()).isEqualTo(VerificationStatus.PENDING);
         assertThat(result.getLicenceNumber()).isEqualTo("DL-12345");
@@ -287,9 +298,109 @@ class UserServiceImplTest {
     @Test
     void submitLicence_asTourist_throwsBadRequest() {
         assertThatThrownBy(() -> service.submitLicence(tourist,
-                new LicenceSubmitRequestDto("DL-1", LocalDate.now().plusYears(1), "https://docs.example.com/dl.pdf")))
+                new LicenceSubmitRequestDto("DL-1", LocalDate.now().plusYears(1)), pdf()))
                 .isInstanceOf(BadRequestException.class);
         verify(userRepository, never()).save(any());
+    }
+
+    private MockMultipartFile pdf() {
+        return new MockMultipartFile("file", "licence.pdf", "application/pdf", "%PDF-1.7".getBytes());
+    }
+
+    private User verifiedGuideExpiringOn(LocalDate expiry) {
+        guide.setVerificationStatus(VerificationStatus.VERIFIED);
+        guide.setLicenceNumber("DL-OLD");
+        guide.setLicenceExpiry(expiry);
+        guide.setLicenceDocumentPath("2/old.pdf");
+        return guide;
+    }
+
+    @Test
+    void submitLicence_verifiedAndStillValid_isRejectedWithExpiryDate() {
+        LocalDate expiry = LocalDate.now().plusDays(31);
+        verifiedGuideExpiringOn(expiry);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+
+        assertThatThrownBy(() -> service.submitLicence(guide,
+                new LicenceSubmitRequestDto("DL-NEW", LocalDate.now().plusYears(2)), pdf()))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Your licence is still valid until " + expiry);
+        verify(userRepository, never()).save(any());
+        verify(licenceDocumentStorage, never()).store(any(), any());
+    }
+
+    @Test
+    void submitLicence_verifiedAndExpiringWithin30Days_renewsAndReplacesOldFile() {
+        verifiedGuideExpiringOn(LocalDate.now().plusDays(30));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(licenceDocumentStorage.store(eq(2L), any())).thenReturn("2/new.pdf");
+
+        UserResponseDto result = service.submitLicence(guide,
+                new LicenceSubmitRequestDto("DL-NEW", LocalDate.now().plusYears(2)), pdf());
+
+        assertThat(result.getVerificationStatus()).isEqualTo(VerificationStatus.PENDING);
+        assertThat(result.getLicenceNumber()).isEqualTo("DL-NEW");
+        verify(licenceDocumentStorage).deleteQuietly("2/old.pdf");
+    }
+
+    @Test
+    void submitLicence_verifiedAndExpired_canRenew() {
+        verifiedGuideExpiringOn(LocalDate.now().minusDays(3));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(licenceDocumentStorage.store(eq(2L), any())).thenReturn("2/new.pdf");
+
+        UserResponseDto result = service.submitLicence(guide,
+                new LicenceSubmitRequestDto("DL-NEW", LocalDate.now().plusYears(2)), pdf());
+
+        assertThat(result.getVerificationStatus()).isEqualTo(VerificationStatus.PENDING);
+    }
+
+    @Test
+    void submitLicence_invalidFile_isRejectedBeforeAnythingIsSaved() {
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+        org.mockito.Mockito.doThrow(new BadRequestException("Only JPEG, PNG, WebP or PDF files are allowed"))
+                .when(licenceDocumentStorage).validate(any());
+
+        assertThatThrownBy(() -> service.submitLicence(guide,
+                new LicenceSubmitRequestDto("DL-1", LocalDate.now().plusYears(1)), pdf()))
+                .isInstanceOf(BadRequestException.class);
+        verify(userRepository, never()).save(any());
+        verify(licenceDocumentStorage, never()).store(any(), any());
+    }
+
+    @Test
+    void getLicenceDocument_byAnotherUser_isDenied() {
+        assertThatThrownBy(() -> service.getLicenceDocument(2L, tourist))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void getLicenceDocument_byOwnerWithoutUpload_isNotFound() {
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+
+        assertThatThrownBy(() -> service.getLicenceDocument(2L, guide))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getLicenceDocument_byAdmin_returnsStoredFile() {
+        guide.setLicenceDocumentPath("2/old.pdf");
+        when(userRepository.findById(2L)).thenReturn(Optional.of(guide));
+        when(licenceDocumentStorage.contentTypeOf("2/old.pdf")).thenReturn("application/pdf");
+
+        assertThat(service.getLicenceDocument(2L, admin).contentType()).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void profile_reportsExpiryFlags() {
+        verifiedGuideExpiringOn(LocalDate.now().minusDays(1));
+
+        UserResponseDto result = service.getProfile(guide);
+
+        assertThat(result.isLicenceExpired()).isTrue();
+        assertThat(result.getLicenceDaysUntilExpiry()).isEqualTo(-1);
     }
 
     @Test

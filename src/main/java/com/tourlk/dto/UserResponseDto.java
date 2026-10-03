@@ -33,6 +33,11 @@ public class UserResponseDto {
     private String licenceNumber;
     private LocalDate licenceExpiry;
     private String licenceDocumentUrl;
+    /** True when a stored licence document can be fetched from /api/users/{id}/licence-document. */
+    private boolean licenceDocumentUploaded;
+    private boolean licenceExpired;
+    /** Days until licenceExpiry (negative once expired); null when there is no expiry. */
+    private Integer licenceDaysUntilExpiry;
     private String licenceRejectionReason;
     private LocalDateTime licenceVerifiedAt;
 

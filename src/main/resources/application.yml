@@ -13,7 +13,7 @@ spring:
 
   servlet:
     multipart:
-      # Ticket attachments: 5 MB per file; the request cap leaves room for 3 files plus the JSON part.
+      # Ticket attachments and licence documents: 5 MB per file; the request cap leaves room for 3 files plus the JSON part.
       max-file-size: 5MB
       max-request-size: 17MB
 
@@ -62,6 +62,8 @@ app:
   uploads:
     # Where ticket attachments are stored on disk (relative to the working directory).
     ticket-dir: ${APP_TICKET_UPLOAD_DIR:uploads/tickets}
+    # Where licence documents are stored on disk (<userId>/<uuid>.<ext>).
+    licence-dir: ${APP_LICENCE_UPLOAD_DIR:uploads/licences}
   frontend:
     # Used to build links that get emailed/logged (e.g. the password reset link).
     base-url: ${FRONTEND_BASE_URL:http://localhost:5173}

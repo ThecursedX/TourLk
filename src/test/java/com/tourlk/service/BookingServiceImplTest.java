@@ -159,6 +159,119 @@ class BookingServiceImplTest {
         verify(bookingRepository, never()).save(any());
     }
 
+    // --- destination closure window ---
+
+    private static final LocalDate TODAY = LocalDate.now();
+
+    private void closeDestination(LocalDate from, LocalDate until, int durationDays) {
+        Destination destination = activePackage.getDestination();
+        destination.setStatus(DestinationStatus.TEMPORARILY_CLOSED);
+        destination.setClosureFrom(from);
+        destination.setClosureUntil(until);
+        activePackage.setDurationDays(durationDays);
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+    }
+
+    private void stubBookingSave() {
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    private BookingRequestDto requestFor(LocalDate travelDate) {
+        return new BookingRequestDto(100L, travelDate, 2, null);
+    }
+
+    @Test
+    void createBooking_tripInsideClosureWindow_isBlockedWithClearMessage() {
+        LocalDate from = TODAY.plusDays(10);
+        LocalDate until = TODAY.plusDays(20);
+        closeDestination(from, until, 3);
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(12)), tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Kandy is closed from " + from + " to " + until
+                        + ", so this package can't be booked for those dates.");
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void createBooking_tripOutsideClosureWindow_isAllowed() {
+        closeDestination(TODAY.plusDays(10), TODAY.plusDays(20), 3);
+        stubBookingSave();
+
+        assertThat(bookingService.createBooking(requestFor(TODAY.plusDays(30)), tourist).getStatus())
+                .isEqualTo(BookingStatus.PENDING);
+        // Ends the day before the closure starts: 3 days from D+7 = D+7..D+9.
+        assertThat(bookingService.createBooking(requestFor(TODAY.plusDays(7)), tourist).getStatus())
+                .isEqualTo(BookingStatus.PENDING);
+    }
+
+    @Test
+    void createBooking_tripPartiallyOverlappingTheStart_isBlocked() {
+        closeDestination(TODAY.plusDays(10), TODAY.plusDays(20), 3);
+
+        // D+8..D+10: its last day is the first closed day.
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(8)), tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("is closed from");
+    }
+
+    @Test
+    void createBooking_tripPartiallyOverlappingTheEnd_isBlocked() {
+        closeDestination(TODAY.plusDays(10), TODAY.plusDays(20), 3);
+
+        // D+20..D+22 starts on the last closed day.
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(20)), tourist))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void createBooking_closureWithFromOnly_blocksEverythingFromThatDate() {
+        closeDestination(TODAY.plusDays(10), null, 2);
+        stubBookingSave();
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(200)), tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("until further notice");
+        assertThat(bookingService.createBooking(requestFor(TODAY.plusDays(5)), tourist).getStatus())
+                .isEqualTo(BookingStatus.PENDING);
+    }
+
+    @Test
+    void createBooking_closureWithUntilOnly_blocksFromTodayUntilThatDate() {
+        closeDestination(null, TODAY.plusDays(10), 2);
+        stubBookingSave();
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(3)), tourist))
+                .isInstanceOf(BadRequestException.class);
+        assertThat(bookingService.createBooking(requestFor(TODAY.plusDays(11)), tourist).getStatus())
+                .isEqualTo(BookingStatus.PENDING);
+    }
+
+    @Test
+    void createBooking_closureWithNeitherDate_blocksEveryDate() {
+        closeDestination(null, null, 2);
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestFor(TODAY.plusDays(90)), tourist))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void requestReschedule_intoClosureWindow_isBlocked() {
+        Booking booking = booking(BookingStatus.CONFIRMED, tourist);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking));
+        activePackage.setDurationDays(3);
+        activePackage.getDestination().setStatus(DestinationStatus.TEMPORARILY_CLOSED);
+        activePackage.getDestination().setClosureFrom(TODAY.plusDays(10));
+        activePackage.getDestination().setClosureUntil(TODAY.plusDays(20));
+
+        assertThatThrownBy(() -> bookingService.requestReschedule(5L,
+                new RescheduleRequestDto(TODAY.plusDays(15)), tourist))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Kandy is closed from");
+        verify(bookingRepository, never()).save(any());
+    }
+
     @Test
     void createBooking_packageNotFound_throwsResourceNotFound() {
         when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.empty());
@@ -181,16 +294,34 @@ class BookingServiceImplTest {
         when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        BookingResponseDto result = bookingService.confirmBooking(5L);
+        BookingResponseDto result = bookingService.confirmBooking(5L, guide);
 
         assertThat(result.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+    }
+
+    @Test
+    void confirmBooking_byUnrelatedUser_throwsAccessDenied() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+
+        assertThatThrownBy(() -> bookingService.confirmBooking(5L, otherTourist))
+                .isInstanceOf(AccessDeniedException.class);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingAfterPayment_alreadyConfirmed_isNoOp() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.CONFIRMED, tourist)));
+
+        bookingService.confirmBookingAfterPayment(5L);
+
+        verify(bookingRepository, never()).save(any());
     }
 
     @Test
     void confirmBooking_notPending_throwsInvalidStatusTransition() {
         when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.CONFIRMED, tourist)));
 
-        assertThatThrownBy(() -> bookingService.confirmBooking(5L))
+        assertThatThrownBy(() -> bookingService.confirmBooking(5L, guide))
                 .isInstanceOf(InvalidStatusTransitionException.class);
         verify(bookingRepository, never()).save(any());
     }
@@ -457,6 +588,13 @@ class BookingServiceImplTest {
     }
 
     @Test
+    void getBookingById_byPackageOwnerGuide_returnsBooking() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+
+        assertThat(bookingService.getBookingById(5L, guide).getId()).isEqualTo(5L);
+    }
+
+    @Test
     void getBookingById_byUnrelatedTourist_throwsAccessDenied() {
         when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
 
@@ -595,7 +733,7 @@ class BookingServiceImplTest {
         when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(bookingService.confirmBooking(5L).getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(bookingService.confirmBooking(5L, guide).getStatus()).isEqualTo(BookingStatus.CONFIRMED);
         verify(departureRepository, never()).existsByTourPackageId(any());
     }
 

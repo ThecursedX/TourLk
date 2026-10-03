@@ -7,15 +7,20 @@ import Button from '../ui/Button'
 import Input from '../ui/Input'
 import { formatLocalDate, tomorrowIso } from '../../utils/date'
 import type { ErrorResponse } from '../../types/auth'
+import { closedForTripMessage, closureWindowOf, tripOverlapsClosure } from '../../utils/closure'
+import type { DestinationSummary } from '../../types/destination'
 import type { PackageDepartureResponseDto } from '../../types/tourPackage'
 
 interface BookNowFormProps {
   tourPackageId: number
   /** When true, the tourist must pick one of the package's departures instead of any date. */
   hasDepartures: boolean
+  /** The package's destination and length, used to rule out dates inside a closure (the backend re-checks). */
+  destination?: DestinationSummary
+  durationDays?: number
 }
 
-export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFormProps) {
+export default function BookNowForm({ tourPackageId, hasDepartures, destination, durationDays = 1 }: BookNowFormProps) {
   const navigate = useNavigate()
   const [travelDate, setTravelDate] = useState('')
   const [numberOfTravelers, setNumberOfTravelers] = useState(1)
@@ -35,6 +40,10 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
       .finally(() => setDeparturesLoading(false))
   }, [tourPackageId, hasDepartures])
 
+  const closure = closureWindowOf(destination)
+  const isClosed = (date: string) => tripOverlapsClosure(date, durationDays, closure)
+  const closedMessage = closure && destination && isClosed(travelDate) ? closedForTripMessage(destination.name, closure) : null
+
   const selectedDeparture = departures.find((d) => d.departureDate === travelDate)
   const noUpcomingDepartures = hasDepartures && !departuresLoading && departures.length === 0
 
@@ -42,6 +51,8 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
     const errors: Record<string, string> = {}
     if (!travelDate) {
       errors.travelDate = hasDepartures ? 'Please choose a departure' : 'Travel date is required'
+    } else if (closedMessage) {
+      errors.travelDate = closedMessage
     }
     if (!numberOfTravelers || numberOfTravelers <= 0) {
       errors.numberOfTravelers = 'Number of travelers must be a positive number'
@@ -59,13 +70,13 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
 
     setSubmitting(true)
     try {
-      await createBooking({
+      const created = await createBooking({
         tourPackageId,
         travelDate,
         numberOfTravelers,
         specialRequests: specialRequests.trim() || undefined,
       })
-      navigate('/bookings/mine')
+      navigate(`/checkout/booking/${created.id}`)
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
         setFormError(err.response.data.message)
@@ -105,7 +116,8 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
             )}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {departures.map((departure) => {
-                const full = departure.seatsLeft <= 0
+                const closed = isClosed(departure.departureDate)
+                const full = departure.seatsLeft <= 0 || closed
                 const selected = departure.departureDate === travelDate
                 return (
                   <label
@@ -131,12 +143,15 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
                       <span className="font-medium">{formatLocalDate(departure.departureDate)}</span>
                     </span>
                     <span className={full ? 'font-semibold' : 'text-slate-500'}>
-                      {full ? 'Full' : `${departure.seatsLeft} seat${departure.seatsLeft === 1 ? '' : 's'} left`}
+                      {closed ? 'Destination closed' : full ? 'Full' : `${departure.seatsLeft} seat${departure.seatsLeft === 1 ? '' : 's'} left`}
                     </span>
                   </label>
                 )
               })}
             </div>
+            {closure && destination && departures.some((d) => isClosed(d.departureDate)) && (
+              <span className="text-sm text-orange-700">{closedForTripMessage(destination.name, closure)}</span>
+            )}
             {fieldErrors.travelDate && <span className="text-sm text-red-600">{fieldErrors.travelDate}</span>}
           </fieldset>
           <div className="grid grid-cols-2 gap-4">{travelersInput}</div>
@@ -150,7 +165,7 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
             min={tomorrowIso()}
             value={travelDate}
             onChange={(e) => setTravelDate(e.target.value)}
-            error={fieldErrors.travelDate}
+            error={fieldErrors.travelDate ?? closedMessage ?? undefined}
           />
           {travelersInput}
         </div>
@@ -170,7 +185,7 @@ export default function BookNowForm({ tourPackageId, hasDepartures }: BookNowFor
       {formError && <p className="text-sm text-red-600">{formError}</p>}
       <Button
         type="submit"
-        disabled={submitting || departuresLoading || noUpcomingDepartures}
+        disabled={submitting || departuresLoading || noUpcomingDepartures || closedMessage !== null}
         className="self-start"
       >
         {submitting ? 'Booking...' : 'Book Now'}

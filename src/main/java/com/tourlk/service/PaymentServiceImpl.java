@@ -33,6 +33,7 @@ import com.tourlk.repo.PaymentSpecifications;
 import com.tourlk.repo.SavedPaymentMethodRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
@@ -76,6 +77,17 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentIntentResponseDto createPaymentIntent(PaymentRequestDto request, User currentUser) {
+        try {
+            return doCreatePaymentIntent(request, currentUser);
+        } catch (DataAccessException ex) {
+            // e.g. a stale CHECK constraint or a lost connection — never surface as the generic 500 text.
+            log.error("Could not record payment for {} {}", request.getPayableType(), request.getPayableId(), ex);
+            throw new PaymentGatewayException(
+                    "We couldn't record your payment right now. Nothing was charged — please try again shortly.", ex);
+        }
+    }
+
+    private PaymentIntentResponseDto doCreatePaymentIntent(PaymentRequestDto request, User currentUser) {
         BigDecimal realAmount = switch (request.getPayableType()) {
             case BOOKING -> resolveBookingAmount(request.getPayableId(), currentUser);
             case ROOM_RESERVATION -> resolveReservationAmount(request.getPayableId(), currentUser);
@@ -86,6 +98,11 @@ public class PaymentServiceImpl implements PaymentService {
             throw new PaymentAmountMismatchException(
                     "The amount for this payment has changed (expected " + realAmount
                             + "). Please refresh and try again.");
+        }
+
+        PaymentIntentResponseDto reusable = settleExistingPendingPayments(request, currentUser, realAmount);
+        if (reusable != null) {
+            return reusable;
         }
 
         PaymentIntent intent = createStripePaymentIntent(realAmount, request.getPayableType(), request.getPayableId(),
@@ -108,15 +125,62 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+    /**
+     * Avoids piling up orphan PENDING payments for one payable: a PENDING payment of this payer for the
+     * same payable is reused (new-card flow, same amount, Stripe intent still awaiting a payment method)
+     * or else cancelled — both in Stripe and locally — before a fresh one is created.
+     *
+     * @return the existing intent to hand back to the client, or null if the caller should create a new one
+     */
+    private PaymentIntentResponseDto settleExistingPendingPayments(PaymentRequestDto request, User currentUser,
+                                                                    BigDecimal realAmount) {
+        PaymentIntentResponseDto reusable = null;
+        for (Payment existing : paymentRepository.findByPayableTypeAndPayableId(
+                request.getPayableType(), request.getPayableId())) {
+            if (existing.getStatus() != PaymentStatus.PENDING
+                    || !existing.getPayer().getId().equals(currentUser.getId())) {
+                continue;
+            }
+            try {
+                PaymentIntent stripeIntent = PaymentIntent.retrieve(existing.getStripePaymentIntentId());
+                boolean reuse = reusable == null
+                        && request.getSavedPaymentMethodId() == null
+                        && existing.getAmount().compareTo(realAmount) == 0
+                        && "requires_payment_method".equals(stripeIntent.getStatus());
+                if (reuse) {
+                    reusable = PaymentIntentResponseDto.builder()
+                            .clientSecret(stripeIntent.getClientSecret())
+                            .paymentId(existing.getId())
+                            .build();
+                    continue;
+                }
+                if (!"succeeded".equals(stripeIntent.getStatus()) && !"canceled".equals(stripeIntent.getStatus())) {
+                    stripeIntent.cancel();
+                } else if ("succeeded".equals(stripeIntent.getStatus())) {
+                    continue; // webhook hasn't landed yet — leave it for handlePaymentSucceeded
+                }
+            } catch (StripeException e) {
+                log.warn("Could not inspect/cancel Stripe intent {} — cancelling payment {} locally only",
+                        existing.getStripePaymentIntentId(), existing.getId(), e);
+            }
+            existing.setStatus(PaymentStatus.CANCELLED);
+            paymentRepository.save(existing);
+        }
+        return reusable;
+    }
+
     private BigDecimal resolveBookingAmount(Long bookingId, User currentUser) {
         BookingResponseDto booking = bookingService.getBookingById(bookingId, currentUser);
 
         if (!booking.getTouristId().equals(currentUser.getId())) {
             throw new AccessDeniedException("Only the tourist who made this booking can pay for it");
         }
-        if (booking.getStatus() != BookingStatus.PENDING) {
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new PaymentRequiredException(
                     "This booking is not awaiting payment (status: " + booking.getStatus() + ")");
+        }
+        if (booking.isPaid()) {
+            throw new PaymentRequiredException("This booking has already been paid");
         }
 
         // Frozen at booking time (with a live-price fallback for legacy rows) — see BookingServiceImpl.
@@ -222,16 +286,23 @@ public class PaymentServiceImpl implements PaymentService {
         // forever; log loudly so it gets a human's attention.
         try {
             switch (payment.getPayableType()) {
-                case BOOKING -> bookingService.confirmBooking(payment.getPayableId());
+                case BOOKING -> bookingService.confirmBookingAfterPayment(payment.getPayableId());
                 case ROOM_RESERVATION ->
                         roomReservationService.confirmReservationAfterPayment(payment.getPayableId());
                 // Transport module touchpoint.
                 case VEHICLE_HIRE -> vehicleHireService.confirmHireAfterPayment(payment.getPayableId());
             }
-            generateInvoice(payment);
         } catch (RuntimeException ex) {
             log.error("Payment {} succeeded but confirming {} {} failed — needs manual review",
                     payment.getId(), payment.getPayableType(), payment.getPayableId(), ex);
+        }
+
+        // Always issued: the money was taken whether or not the confirm step applied.
+        try {
+            generateInvoice(payment);
+        } catch (RuntimeException ex) {
+            log.error("Payment {} succeeded but generating its invoice failed — needs manual review",
+                    payment.getId(), ex);
         }
     }
 

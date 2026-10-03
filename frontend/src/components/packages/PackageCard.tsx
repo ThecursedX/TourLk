@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { TourPackageResponseDto } from '../../types/tourPackage'
 import Card from '../ui/Card'
+import DestinationClosureBanner from '../destinations/DestinationClosureBanner'
 import StatusBadge from './StatusBadge'
 import StarRating from '../reviews/StarRating'
 
@@ -23,6 +24,7 @@ export default function PackageCard({ tourPackage, footer }: PackageCardProps) {
         <StatusBadge status={tourPackage.status} />
       </div>
       <p className="text-sm text-slate-600">{tourPackage.destination.name}</p>
+      <DestinationClosureBanner destination={tourPackage.destination} compact />
       {tourPackage.reviewCount > 0 ? (
         <div className="flex items-center gap-1.5 text-sm text-slate-600">
           <StarRating value={Math.round(tourPackage.averageRating)} size="sm" />

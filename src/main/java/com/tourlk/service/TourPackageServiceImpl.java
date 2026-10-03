@@ -17,11 +17,10 @@ import com.tourlk.enums.PackageStatus;
 import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.enums.Role;
-import com.tourlk.enums.VerificationStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.ChangesRequireConfirmationException;
 import com.tourlk.exception.InvalidStatusTransitionException;
-import com.tourlk.exception.LicenceNotVerifiedException;
+import com.tourlk.util.LicenceRules;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.BookingRepository;
 import com.tourlk.repo.ItineraryDayRepository;
@@ -313,9 +312,9 @@ public class TourPackageServiceImpl implements TourPackageService {
     }
 
     private void assertLicenceVerifiedIfGuide(User currentUser) {
-        if (currentUser.getRole() == Role.GUIDE && currentUser.getVerificationStatus() != VerificationStatus.VERIFIED) {
-            throw new LicenceNotVerifiedException(
-                    "You must be a verified guide before you can create or submit tour packages");
+        if (currentUser.getRole() == Role.GUIDE) {
+            LicenceRules.assertVerifiedAndCurrent(currentUser,
+                    "You must be a verified guide before you can create or submit tour packages", LocalDate.now());
         }
     }
 
@@ -473,6 +472,9 @@ public class TourPackageServiceImpl implements TourPackageService {
                 .province(destination.resolveProvince())
                 .district(destination.getDistrict())
                 .status(destination.getStatus())
+                .closureReason(destination.getClosureReason())
+                .closureFrom(destination.getClosureFrom())
+                .closureUntil(destination.getClosureUntil())
                 .build();
     }
 

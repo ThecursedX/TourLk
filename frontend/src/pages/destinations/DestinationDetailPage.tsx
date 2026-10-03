@@ -147,7 +147,7 @@ export default function DestinationDetailPage() {
         )}
 
         <div className="flex gap-4 border-t border-slate-200 pt-4 text-sm font-medium text-blue-600">
-          <Link to="/packages" className="hover:underline">
+          <Link to={`/packages?destinationId=${destination.id}`} className="hover:underline">
             Browse tour packages &rarr;
           </Link>
         </div>

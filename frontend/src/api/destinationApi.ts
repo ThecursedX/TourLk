@@ -1,5 +1,6 @@
 import axiosClient from './axiosClient'
 import type {
+  ClosureImpactDto,
   DestinationBrowseParams,
   DestinationClosureRequestDto,
   DestinationRequestDto,
@@ -40,6 +41,13 @@ export function publishDestination(id: number) {
 
 export function closeDestination(id: number, data: DestinationClosureRequestDto) {
   return axiosClient.put<DestinationResponseDto>(`/destinations/${id}/close`, data).then((res) => res.data)
+}
+
+/** How many active bookings closing for this window would cancel and fully refund (changes nothing). */
+export function getClosureImpact(id: number, from?: string, until?: string) {
+  return axiosClient
+    .get<ClosureImpactDto>(`/destinations/${id}/closure-impact`, { params: { from: from || undefined, until: until || undefined } })
+    .then((res) => res.data)
 }
 
 export function reopenDestination(id: number) {

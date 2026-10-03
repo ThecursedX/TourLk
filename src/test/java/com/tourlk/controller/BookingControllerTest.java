@@ -89,12 +89,20 @@ class BookingControllerTest {
         verifyNoInteractions(bookingService);
     }
 
-    // --- PUT /api/bookings/{id}/confirm : hasRole('ADMIN') ---
+    // --- PUT /api/bookings/{id}/confirm : hasAnyRole('ADMIN','GUIDE') ---
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void confirm_asAdmin_returnsOk() throws Exception {
-        when(bookingService.confirmBooking(5L)).thenReturn(sampleBooking());
+        when(bookingService.confirmBooking(eq(5L), any())).thenReturn(sampleBooking());
+
+        mvc.perform(put("/api/bookings/5/confirm")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "GUIDE")
+    void confirm_asGuide_returnsOk() throws Exception {
+        when(bookingService.confirmBooking(eq(5L), any())).thenReturn(sampleBooking());
 
         mvc.perform(put("/api/bookings/5/confirm")).andExpect(status().isOk());
     }

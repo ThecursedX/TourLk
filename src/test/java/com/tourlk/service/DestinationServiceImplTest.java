@@ -1,5 +1,6 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.ClosureSummaryDto;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.entity.Destination;
@@ -19,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import com.tourlk.util.ClosureWindow;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -30,6 +33,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,6 +54,9 @@ class DestinationServiceImplTest {
     private TourPackageRepository tourPackageRepository;
     @Mock
     private AccommodationRepository accommodationRepository;
+
+    @Mock
+    private DestinationClosureBookingService closureBookingService;
 
     @InjectMocks
     private DestinationServiceImpl service;
@@ -318,23 +326,125 @@ class DestinationServiceImplTest {
             expectSaveEchoed();
             LocalDate until = LocalDate.now().plusDays(10);
 
-            DestinationResponseDto result = service.closeTemporarily(1L, "  Bridge repairs ", until);
+            DestinationResponseDto result = service.closeTemporarily(1L, "  Bridge repairs ", null, until);
 
             assertThat(result.getStatus()).isEqualTo(DestinationStatus.TEMPORARILY_CLOSED);
             assertThat(result.getClosureReason()).isEqualTo("Bridge repairs");
             assertThat(result.getClosureUntil()).isEqualTo(until);
         }
 
+        private DestinationResponseDto closeWith(LocalDate from, LocalDate until) {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
+            expectSaveEchoed();
+            return service.closeTemporarily(1L, "Repairs", from, until);
+        }
+
+        @Test
+        void closeTemporarily_fromOnly_isOpenEnded() {
+            LocalDate from = LocalDate.now().plusDays(5);
+
+            DestinationResponseDto result = closeWith(from, null);
+
+            assertThat(result.getStatus()).isEqualTo(DestinationStatus.TEMPORARILY_CLOSED);
+            assertThat(result.getClosureFrom()).isEqualTo(from);
+            assertThat(result.getClosureUntil()).isNull();
+        }
+
+        @Test
+        void closeTemporarily_untilOnly_startsToday() {
+            LocalDate until = LocalDate.now().plusDays(5);
+
+            DestinationResponseDto result = closeWith(null, until);
+
+            assertThat(result.getClosureFrom()).isNull();
+            assertThat(result.getClosureUntil()).isEqualTo(until);
+            ArgumentCaptor<ClosureWindow> window = ArgumentCaptor.forClass(ClosureWindow.class);
+            verify(closureBookingService).cancelAffected(eq(1L), window.capture(), eq("Repairs"));
+            assertThat(window.getValue()).isEqualTo(new ClosureWindow(LocalDate.now(), until));
+        }
+
+        @Test
+        void closeTemporarily_fromAndUntil_storesBoth() {
+            LocalDate from = LocalDate.now().plusDays(2);
+            LocalDate until = LocalDate.now().plusDays(9);
+
+            DestinationResponseDto result = closeWith(from, until);
+
+            assertThat(result.getClosureFrom()).isEqualTo(from);
+            assertThat(result.getClosureUntil()).isEqualTo(until);
+        }
+
+        @Test
+        void closeTemporarily_neitherDate_closesFromTodayUntilReopened() {
+            DestinationResponseDto result = closeWith(null, null);
+
+            assertThat(result.getStatus()).isEqualTo(DestinationStatus.TEMPORARILY_CLOSED);
+            assertThat(result.getClosureFrom()).isNull();
+            assertThat(result.getClosureUntil()).isNull();
+            verify(closureBookingService).cancelAffected(eq(1L), eq(new ClosureWindow(LocalDate.now(), null)), eq("Repairs"));
+        }
+
+        @Test
+        void closeTemporarily_returnsTheCancellationSummary() {
+            ClosureSummaryDto summary = ClosureSummaryDto.builder().cancelledBookings(3).refundedCount(2).failedRefunds(1)
+                    .failedBookingIds(List.of(9L)).build();
+            when(closureBookingService.cancelAffected(eq(1L), any(), any())).thenReturn(summary);
+
+            DestinationResponseDto result = closeWith(null, null);
+
+            assertThat(result.getClosureSummary()).isSameAs(summary);
+        }
+
+        @Test
+        void closeTemporarily_startInThePast_throwsBadRequestAndCancelsNothing() {
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", LocalDate.now().minusDays(1), null))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("start date cannot be in the past");
+            verifyNoInteractions(closureBookingService);
+        }
+
+        @Test
+        void closeTemporarily_startAfterEnd_throwsBadRequest() {
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs",
+                    LocalDate.now().plusDays(5), LocalDate.now().plusDays(2)))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("on or before");
+            verify(destinationRepository, never()).save(any());
+        }
+
+        @Test
+        void previewClosureImpact_countsWithoutChangingAnything() {
+            when(destinationRepository.findById(1L))
+                    .thenReturn(Optional.of(destination(1L, DestinationStatus.PUBLISHED)));
+            when(closureBookingService.countAffected(eq(1L), any())).thenReturn(4);
+
+            assertThat(service.previewClosureImpact(1L, null, LocalDate.now().plusDays(3)).getAffectedBookings())
+                    .isEqualTo(4);
+            verify(destinationRepository, never()).save(any());
+            verify(closureBookingService, never()).cancelAffected(any(), any(), any());
+        }
+
+        @Test
+        void reopenDestination_clearsClosureFrom() {
+            Destination closed = destination(1L, DestinationStatus.TEMPORARILY_CLOSED);
+            closed.setClosureFrom(LocalDate.now().plusDays(1));
+            when(destinationRepository.findById(1L)).thenReturn(Optional.of(closed));
+            expectSaveEchoed();
+
+            assertThat(service.reopenDestination(1L).getClosureFrom()).isNull();
+        }
+
         @Test
         void closeTemporarily_blankReason_throwsBadRequest() {
-            assertThatThrownBy(() -> service.closeTemporarily(1L, "  ", null))
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "  ", null, null))
                     .isInstanceOf(BadRequestException.class);
             verify(destinationRepository, never()).save(any());
         }
 
         @Test
         void closeTemporarily_endDateInThePast_throwsBadRequest() {
-            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", LocalDate.now().minusDays(1)))
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", null, LocalDate.now().minusDays(1)))
                     .isInstanceOf(BadRequestException.class);
         }
 
@@ -343,7 +453,7 @@ class DestinationServiceImplTest {
             when(destinationRepository.findById(1L))
                     .thenReturn(Optional.of(destination(1L, DestinationStatus.ARCHIVED)));
 
-            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", null))
+            assertThatThrownBy(() -> service.closeTemporarily(1L, "Repairs", null, null))
                     .isInstanceOf(InvalidStatusTransitionException.class);
         }
 

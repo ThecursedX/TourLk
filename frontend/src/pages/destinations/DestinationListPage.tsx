@@ -164,7 +164,7 @@ export default function DestinationListPage() {
               <Link to={`/destinations/${destination.id}`} className="hover:underline">
                 View destination
               </Link>
-              <Link to="/packages" className="hover:underline">
+              <Link to={`/packages?destinationId=${destination.id}`} className="hover:underline">
                 Packages
               </Link>
               <Link to="/accommodations" className="hover:underline">
