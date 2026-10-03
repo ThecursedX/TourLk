@@ -5,19 +5,23 @@ import Input from '../ui/Input'
 import TagInput from '../ui/TagInput'
 import DestinationSelect from '../destinations/DestinationSelect'
 import DepartureManager from './DepartureManager'
+import AddOnPicker from './AddOnPicker'
 import type { ErrorResponse } from '../../types/auth'
-import type { ItineraryDayRequestDto, TourPackageRequestDto } from '../../types/tourPackage'
+import type { ItineraryDayRequestDto, PackageAddOnItemDto, TourPackageRequestDto } from '../../types/tourPackage'
 import type { DestinationSummary } from '../../types/destination'
 
 interface PackageFormProps {
   initialValues?: TourPackageRequestDto
-  onSubmit: (values: TourPackageRequestDto) => Promise<void>
+  /** {@code addOns} is the full list of hotel rooms / vehicles to attach once the package is saved. */
+  onSubmit: (values: TourPackageRequestDto, addOns: PackageAddOnItemDto[]) => Promise<void>
   submitLabel: string
   submittingLabel: string
   /** The package's saved destination, so an edit form can still show it even if it's now inactive. */
   currentDestination?: DestinationSummary | null
   /** Set in edit mode only — departures need a saved package to attach to. */
   packageId?: number
+  /** Add-ons already attached to the package (edit mode). */
+  initialAddOns?: PackageAddOnItemDto[]
 }
 
 const emptyValues: TourPackageRequestDto = {
@@ -42,11 +46,13 @@ export default function PackageForm({
   submittingLabel,
   currentDestination,
   packageId,
+  initialAddOns,
 }: PackageFormProps) {
   const [values, setValues] = useState<TourPackageRequestDto>(initialValues ?? emptyValues)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [addOns, setAddOns] = useState<PackageAddOnItemDto[]>(initialAddOns ?? [])
 
   const itineraryDays = values.itineraryDays ?? []
   const inclusions = values.inclusions ?? []
@@ -100,7 +106,7 @@ export default function PackageForm({
         inclusions,
         exclusions,
         imageUrls: imageUrls.map((url) => url.trim()).filter((url) => url.length > 0),
-      })
+      }, addOns)
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
         setFormError(err.response.data.message)
@@ -297,6 +303,8 @@ export default function PackageForm({
           </Button>
         </div>
       </div>
+
+      <AddOnPicker destinationId={values.destinationId} value={addOns} onChange={setAddOns} />
 
       {packageId !== undefined && (
         <DepartureManager packageId={packageId} defaultSeats={initialValues?.maxCapacity ?? values.maxCapacity} />

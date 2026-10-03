@@ -71,7 +71,7 @@ export default function RoomForm({ initialValues, onSubmit, onCancel, submitLabe
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-md border border-slate-200 p-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
       <Input
         id="roomType"
         label="Room type"

@@ -21,6 +21,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long>, JpaSpec
 
     List<Payment> findByPayableTypeAndPayableId(PayableType payableType, Long payableId);
 
+    boolean existsByPayableTypeAndPayableIdAndStatusIn(PayableType payableType, Long payableId,
+                                                       Collection<PaymentStatus> statuses);
+
     Optional<Payment> findByStripePaymentIntentId(String stripePaymentIntentId);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status IN :statuses")

@@ -141,6 +141,8 @@ export interface DestinationSummary {
   closureReason?: string | null
   closureFrom?: string | null
   closureUntil?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
 export interface DestinationBrowseParams {

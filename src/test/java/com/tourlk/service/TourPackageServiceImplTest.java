@@ -86,6 +86,8 @@ class TourPackageServiceImplTest {
     private ReviewRepository reviewRepository;
     @Mock
     private BookingRepository bookingRepository;
+    @Mock
+    private com.tourlk.repo.PackageAddOnRepository packageAddOnRepository;
     /** Real policy (75 / 200 USD per day) — it's pure logic, nothing to mock. */
     @Spy
     private BudgetTierPolicy budgetTierPolicy =

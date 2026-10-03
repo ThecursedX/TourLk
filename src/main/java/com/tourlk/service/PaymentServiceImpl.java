@@ -4,6 +4,7 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentIntent;
 import com.stripe.param.PaymentIntentCreateParams;
 import com.tourlk.dto.BookingResponseDto;
+import com.tourlk.dto.BulkDeletePaymentsResultDto;
 import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
 import com.tourlk.dto.PaymentRequestDto;
@@ -22,6 +23,7 @@ import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.VehicleHireStatus;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.PaymentAmountMismatchException;
 import com.tourlk.exception.PaymentGatewayException;
@@ -45,6 +47,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
@@ -64,6 +67,14 @@ public class PaymentServiceImpl implements PaymentService {
 
     private static final String CURRENCY = "usd";
 
+    /** CANCELLED is a payment that never completed, the same kind of leftover as PENDING / FAILED. */
+    private static final EnumSet<PaymentStatus> DELETABLE_STATUSES = EnumSet.of(
+            PaymentStatus.PENDING, PaymentStatus.FAILED, PaymentStatus.REFUNDED, PaymentStatus.CANCELLED);
+
+    static final String NOT_DELETABLE_MESSAGE =
+            "Payments that have succeeded or have a refund in progress cannot be deleted.";
+    private static final int MAX_BULK_DELETE = 200;
+
     private final PaymentRepository paymentRepository;
     private final InvoiceRepository invoiceRepository;
     private final BookingService bookingService;
@@ -74,8 +85,10 @@ public class PaymentServiceImpl implements PaymentService {
     private final RefundGateway refundGateway;
     private final SavedPaymentMethodRepository savedPaymentMethodRepository;
 
+    // Deliberately not @Transactional: a saved-card intent is confirmed server-side, so Stripe can fire
+    // payment_intent.succeeded within milliseconds. Each repository call commits on its own, so the Payment
+    // row is visible to handlePaymentSucceeded as soon as it is saved (Stripe retries if it still lands first).
     @Override
-    @Transactional
     public PaymentIntentResponseDto createPaymentIntent(PaymentRequestDto request, User currentUser) {
         try {
             return doCreatePaymentIntent(request, currentUser);
@@ -199,6 +212,11 @@ public class PaymentServiceImpl implements PaymentService {
                     "This reservation is not awaiting payment (status: " + reservation.getStatus() + ")");
         }
 
+        if (reservation.getBookingId() != null) {
+            throw new BadRequestException("This reservation is part of package booking #" + reservation.getBookingId()
+                    + " and is paid together with it — pay for the booking instead.");
+        }
+
         long nights = ChronoUnit.DAYS.between(reservation.getCheckInDate(), reservation.getCheckOutDate());
         return reservation.getRoom().getPricePerNight()
                 .multiply(BigDecimal.valueOf(nights))
@@ -215,6 +233,11 @@ public class PaymentServiceImpl implements PaymentService {
         if (hire.getStatus() != VehicleHireStatus.PENDING) {
             throw new PaymentRequiredException(
                     "This hire is not awaiting payment (status: " + hire.getStatus() + ")");
+        }
+
+        if (hire.getBookingId() != null) {
+            throw new BadRequestException("This hire is part of package booking #" + hire.getBookingId()
+                    + " and is paid together with it — pay for the booking instead.");
         }
 
         // totalPrice was already computed and frozen on the hire at creation
@@ -243,7 +266,15 @@ public class PaymentServiceImpl implements PaymentService {
                 builder.setCustomer(currentUser.getStripeCustomerId())
                         .setPaymentMethod(savedMethod.getStripePaymentMethodId())
                         .setConfirm(true)
-                        .setOffSession(false);
+                        .setOffSession(false)
+                        // Saved-card intents are confirmed server-side with no return_url, so redirect-based
+                        // payment methods must be excluded or Stripe rejects the confirm.
+                        .setAutomaticPaymentMethods(
+                                PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                                        .setEnabled(true)
+                                        .setAllowRedirects(
+                                                PaymentIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
+                                        .build());
             } else {
                 builder.setAutomaticPaymentMethods(
                         PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
@@ -253,16 +284,22 @@ public class PaymentServiceImpl implements PaymentService {
 
             return PaymentIntent.create(builder.build());
         } catch (StripeException e) {
-            throw new PaymentGatewayException("Could not start payment: " + e.getMessage(), e);
+            log.error("Stripe rejected PaymentIntent creation for {} {}: {}", payableType, payableId,
+                    e.getMessage(), e);
+            throw new PaymentGatewayException(
+                    "Payment could not be started, please try another card.", e);
         }
     }
 
     @Override
     @Transactional
     public void handlePaymentSucceeded(String stripePaymentIntentId) {
-        Payment payment = paymentRepository.findByStripePaymentIntentId(stripePaymentIntentId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No payment found for PaymentIntent " + stripePaymentIntentId));
+        Payment payment = paymentRepository.findByStripePaymentIntentId(stripePaymentIntentId).orElse(null);
+        if (payment == null) {
+            // e.g. the record was deleted by an admin — ACK so Stripe stops retrying.
+            log.warn("Ignoring payment_intent.succeeded for {}: no payment record (deleted?)", stripePaymentIntentId);
+            return;
+        }
 
         // Webhooks can be delivered more than once (Stripe retries on any
         // non-2xx response, and duplicates do happen even without that) —
@@ -309,9 +346,12 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public void handlePaymentFailed(String stripePaymentIntentId) {
-        Payment payment = paymentRepository.findByStripePaymentIntentId(stripePaymentIntentId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No payment found for PaymentIntent " + stripePaymentIntentId));
+        Payment payment = paymentRepository.findByStripePaymentIntentId(stripePaymentIntentId).orElse(null);
+        if (payment == null) {
+            log.warn("Ignoring payment_intent.payment_failed for {}: no payment record (deleted?)",
+                    stripePaymentIntentId);
+            return;
+        }
 
         if (payment.getStatus() == PaymentStatus.PENDING) {
             payment.setStatus(PaymentStatus.FAILED);
@@ -330,6 +370,85 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return toResponse(refundGateway.refund(payment, payment.getAmount()));
+    }
+
+    @Override
+    @Transactional
+    public void deletePayment(Long paymentId, User admin) {
+        deleteOne(getEntity(paymentId), admin);
+    }
+
+    @Override
+    @Transactional
+    public BulkDeletePaymentsResultDto deletePayments(List<Long> ids, User admin) {
+        List<Long> distinct = ids == null ? List.of() : ids.stream().distinct().toList();
+        if (distinct.isEmpty()) {
+            throw new BadRequestException("Select at least one payment");
+        }
+        if (distinct.size() > MAX_BULK_DELETE) {
+            throw new BadRequestException("You can delete at most " + MAX_BULK_DELETE + " payments at a time");
+        }
+
+        int deleted = 0;
+        List<BulkDeletePaymentsResultDto.Skipped> skipped = new ArrayList<>();
+        for (Long id : distinct) {
+            Payment payment = paymentRepository.findById(id).orElse(null);
+            if (payment == null) {
+                skipped.add(new BulkDeletePaymentsResultDto.Skipped(id, "Payment not found"));
+                continue;
+            }
+            try {
+                // deleteOne validates (and talks to Stripe) before writing anything, so a skipped row leaves no
+                // partial changes behind inside this shared transaction.
+                deleteOne(payment, admin);
+                deleted++;
+            } catch (InvalidStatusTransitionException | PaymentGatewayException ex) {
+                skipped.add(new BulkDeletePaymentsResultDto.Skipped(id, ex.getMessage()));
+            }
+        }
+        return BulkDeletePaymentsResultDto.builder().deleted(deleted).skipped(skipped).build();
+    }
+
+    private void deleteOne(Payment payment, User admin) {
+        if (!DELETABLE_STATUSES.contains(payment.getStatus())) {
+            throw new InvalidStatusTransitionException(NOT_DELETABLE_MESSAGE);
+        }
+        if (payment.getStatus() == PaymentStatus.PENDING && payment.getStripePaymentIntentId() != null) {
+            cancelStripeIntentForDelete(payment.getStripePaymentIntentId());
+        }
+
+        // Notifications only carry a generic link (no FK to the payment), so the invoice is the only dependent row.
+        invoiceRepository.findByPaymentId(payment.getId()).ifPresent(invoice -> {
+            invoiceRepository.delete(invoice);
+            invoiceRepository.flush();
+        });
+        paymentRepository.delete(payment);
+
+        // The booking / reservation / hire is deliberately left as it is: this only cleans the payment record.
+        log.info("AUDIT admin {} deleted payment {} (status={}, amount={} {}, payable={} {})",
+                admin == null ? null : admin.getId(), payment.getId(), payment.getStatus(), payment.getAmount(),
+                payment.getCurrency(), payment.getPayableType(), payment.getPayableId());
+    }
+
+    /** Cancels the intent so it can't be paid after the record is gone; aborts if it already got paid. */
+    private void cancelStripeIntentForDelete(String intentId) {
+        try {
+            PaymentIntent intent = PaymentIntent.retrieve(intentId);
+            String stripeStatus = intent.getStatus();
+            if ("succeeded".equals(stripeStatus) || "processing".equals(stripeStatus)) {
+                throw new InvalidStatusTransitionException(
+                        "This payment is already " + stripeStatus + " in Stripe. Please refresh the page.");
+            }
+            if (!"canceled".equals(stripeStatus)) {
+                intent.cancel();
+            }
+        } catch (StripeException e) {
+            if ("resource_missing".equals(e.getCode())) {
+                return; // already gone in Stripe
+            }
+            log.error("Could not cancel Stripe intent {} before deleting its payment", intentId, e);
+            throw new PaymentGatewayException("Could not cancel the payment in Stripe: " + e.getMessage(), e);
+        }
     }
 
     @Override

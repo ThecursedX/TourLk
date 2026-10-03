@@ -91,7 +91,7 @@ class VehicleHireServiceImplTest {
     @Test
     void createHire_validAndAvailable_savesPendingWithComputedTotalPrice() {
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> {
             VehicleHire h = inv.getArgument(0);
             h.setId(8L);
@@ -133,7 +133,7 @@ class VehicleHireServiceImplTest {
     @Test
     void createHire_overlappingConfirmedHire_throwsVehicleUnavailable() {
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(true);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(true);
 
         VehicleHireRequestDto request = new VehicleHireRequestDto(
                 40L, LocalDate.now().plusDays(5), LocalDate.now().plusDays(7), "CMB Airport", null);
@@ -162,7 +162,7 @@ class VehicleHireServiceImplTest {
     void confirmHire_byVehicleOwner_confirms() {
         when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(service.confirmHire(8L, driver).getStatus()).isEqualTo(VehicleHireStatus.CONFIRMED);
@@ -182,7 +182,7 @@ class VehicleHireServiceImplTest {
     void confirmHireAfterPayment_pending_confirmsWithoutOwnerCheck() {
         when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
 
         assertThat(service.confirmHireAfterPayment(8L).getStatus()).isEqualTo(VehicleHireStatus.CONFIRMED);
@@ -239,7 +239,7 @@ class VehicleHireServiceImplTest {
     @Test
     void createHire_notifiesTheVehicleOwner() {
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.createHire(new VehicleHireRequestDto(
@@ -253,7 +253,7 @@ class VehicleHireServiceImplTest {
     void confirmHire_byOwner_notifiesOnlyTheTourist() {
         when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.confirmHire(8L, driver);
@@ -266,7 +266,7 @@ class VehicleHireServiceImplTest {
     void confirmHireAfterPayment_notifiesBothTouristAndOwner() {
         when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
-        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
         when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.confirmHireAfterPayment(8L);
@@ -296,4 +296,118 @@ class VehicleHireServiceImplTest {
 
         verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_COMPLETED), any(), any(), any());
     }
+
+    // ------------------------------------------------------------------
+    // PENDING + CONFIRMED hold the vehicle; expiry; booked dates
+    // ------------------------------------------------------------------
+
+    @Test
+    void createHire_checksPendingAndConfirmedHires_andReportsTheRequestedRange() {
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(true);
+        LocalDate start = LocalDate.now().plusDays(5);
+        LocalDate end = LocalDate.now().plusDays(7);
+
+        assertThatThrownBy(() -> service.createHire(
+                new VehicleHireRequestDto(40L, start, end, "CMB Airport", null), tourist))
+                .isInstanceOf(VehicleUnavailableException.class)
+                .hasMessage("This vehicle is already booked from " + start + " to " + end + ".");
+        verify(vehicleHireRepository).existsOverlapping(40L,
+                java.util.EnumSet.of(VehicleHireStatus.PENDING, VehicleHireStatus.CONFIRMED), start, end, 0L);
+    }
+
+    @Test
+    void confirmHire_excludesTheHireItselfFromTheOverlapCheck() {
+        VehicleHire pending = hire(VehicleHireStatus.PENDING, tourist);
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(pending));
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmHire(8L, driver);
+
+        verify(vehicleHireRepository).existsOverlapping(eq(40L), any(), any(), any(), eq(8L));
+    }
+
+    @Test
+    void expireUnpaidHire_cancelsPendingAndNotifiesTourist() {
+        VehicleHire pending = hire(VehicleHireStatus.PENDING, tourist);
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(pending));
+
+        assertThat(service.expireUnpaidHire(8L)).isTrue();
+
+        assertThat(pending.getStatus()).isEqualTo(VehicleHireStatus.CANCELLED);
+        verify(notificationService).notify(eq(tourist), eq(NotificationType.VEHICLE_HIRE_CANCELLED), any(), any(), any());
+    }
+
+    @Test
+    void expireUnpaidHire_leavesNonPendingHiresAlone() {
+        VehicleHire confirmed = hire(VehicleHireStatus.CONFIRMED, tourist);
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(confirmed));
+
+        assertThat(service.expireUnpaidHire(8L)).isFalse();
+        assertThat(confirmed.getStatus()).isEqualTo(VehicleHireStatus.CONFIRMED);
+    }
+
+    @Test
+    void getBookedDates_returnsPendingAndConfirmedRangesFromToday() {
+        when(vehicleRepository.existsById(40L)).thenReturn(true);
+        VehicleHire h = hire(VehicleHireStatus.PENDING, tourist);
+        when(vehicleHireRepository.findByVehicleIdAndStatusInAndEndDateGreaterThanEqualOrderByStartDateAsc(
+                eq(40L), eq(java.util.EnumSet.of(VehicleHireStatus.PENDING, VehicleHireStatus.CONFIRMED)), any()))
+                .thenReturn(java.util.List.of(h));
+
+        var ranges = service.getBookedDates(40L);
+
+        assertThat(ranges).hasSize(1);
+        assertThat(ranges.get(0).startDate()).isEqualTo(h.getStartDate());
+        assertThat(ranges.get(0).endDate()).isEqualTo(h.getEndDate());
+    }
+
+    // ------------------------------------------------------------------
+    // hires linked to a package booking
+    // ------------------------------------------------------------------
+
+    private VehicleHire linkedHire(VehicleHireStatus status, com.tourlk.enums.BookingStatus bookingStatus) {
+        VehicleHire h = hire(status, tourist);
+        h.setBooking(com.tourlk.entity.Booking.builder().id(5L).status(bookingStatus)
+                .tourPackage(com.tourlk.entity.TourPackage.builder().title("Hill Country").build()).build());
+        return h;
+    }
+
+    @Test
+    void cancelHire_linkedToActiveBooking_isRejectedWithPointerToTheBooking() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(
+                linkedHire(VehicleHireStatus.PENDING, com.tourlk.enums.BookingStatus.CONFIRMED)));
+
+        assertThatThrownBy(() -> service.cancelHire(8L, driver))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("package booking #5");
+        verify(vehicleHireRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelLinkedToBooking_cancelsLiveHiresAndNotifiesTheDriver() {
+        VehicleHire live = linkedHire(VehicleHireStatus.CONFIRMED, com.tourlk.enums.BookingStatus.CANCELLED);
+        when(vehicleHireRepository.findByBookingId(5L)).thenReturn(java.util.List.of(live));
+
+        service.cancelLinkedToBooking(5L);
+
+        assertThat(live.getStatus()).isEqualTo(VehicleHireStatus.CANCELLED);
+        verify(notificationService).notify(eq(driver), eq(NotificationType.VEHICLE_HIRE_CANCELLED), any(), any(), any());
+    }
+
+    @Test
+    void confirmLinkedAfterPayment_confirmsPendingHires() {
+        VehicleHire pending = linkedHire(VehicleHireStatus.PENDING, com.tourlk.enums.BookingStatus.CONFIRMED);
+        when(vehicleHireRepository.findByBookingId(5L)).thenReturn(java.util.List.of(pending));
+        when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));
+        when(vehicleHireRepository.existsOverlapping(any(), any(), any(), any(), any())).thenReturn(false);
+        when(vehicleHireRepository.save(any(VehicleHire.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.confirmLinkedAfterPayment(5L);
+
+        assertThat(pending.getStatus()).isEqualTo(VehicleHireStatus.CONFIRMED);
+    }
+
 }

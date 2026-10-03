@@ -135,6 +135,39 @@ class AccommodationServiceImplTest {
     class CreateAndUpdate {
 
         @Test
+        void createAccommodation_withCoordinates_savesAndReturnsThem() {
+            expectAccSaveEchoed();
+            AccommodationRequestDto request = accRequest();
+            request.setLatitude(6.9271);
+            request.setLongitude(79.8612);
+
+            AccommodationResponseDto result = service.createAccommodation(request, owner);
+
+            assertThat(result.getLatitude()).isEqualTo(6.9271);
+            assertThat(result.getLongitude()).isEqualTo(79.8612);
+        }
+
+        @Test
+        void createAccommodation_withoutCoordinates_leavesThemNull() {
+            expectAccSaveEchoed();
+
+            AccommodationResponseDto result = service.createAccommodation(accRequest(), owner);
+
+            assertThat(result.getLatitude()).isNull();
+            assertThat(result.getLongitude()).isNull();
+        }
+
+        @Test
+        void createAccommodation_onlyOneCoordinate_isRejected() {
+            AccommodationRequestDto request = accRequest();
+            request.setLatitude(6.9271);
+
+            assertThatThrownBy(() -> service.createAccommodation(request, owner))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessage("Latitude and longitude must be provided together");
+        }
+
+        @Test
         void createAccommodation_savesAsDraftOwnedByCurrentUser() {
             expectAccSaveEchoed();
 
@@ -305,7 +338,7 @@ class AccommodationServiceImplTest {
             when(accommodationRepository.findById(30L))
                     .thenReturn(Optional.of(accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE)));
             when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(1);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(1);
             expectAccSaveEchoed();
 
             assertThat(service.resumeAvailability(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
@@ -316,7 +349,7 @@ class AccommodationServiceImplTest {
             when(accommodationRepository.findById(30L))
                     .thenReturn(Optional.of(accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE)));
             when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(5);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
             expectAccSaveEchoed();
 
             assertThat(service.resumeAvailability(30L, owner).getStatus())
@@ -337,7 +370,7 @@ class AccommodationServiceImplTest {
             when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
             when(roomRepository.findByAccommodationId(30L))
                     .thenReturn(List.of(room(AccommodationStatus.ACTIVE), room(AccommodationStatus.ACTIVE)));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(5);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
 
             service.refreshAvailabilityStatus(30L);
 
@@ -353,8 +386,8 @@ class AccommodationServiceImplTest {
             free.setId(41L);
             when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
             when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(full, free));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(40L), any(), any(), any())).thenReturn(5);
-            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(41L), any(), any(), any())).thenReturn(4);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(40L), any(), any(), any(), any())).thenReturn(5);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(41L), any(), any(), any(), any())).thenReturn(4);
 
             service.refreshAvailabilityStatus(30L);
 
@@ -367,7 +400,7 @@ class AccommodationServiceImplTest {
             Accommodation acc = accommodation(AccommodationStatus.FULLY_BOOKED);
             when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
             when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(4);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(4);
 
             service.refreshAvailabilityStatus(30L);
 
@@ -403,7 +436,7 @@ class AccommodationServiceImplTest {
             when(accommodationRepository.findByStatus(AccommodationStatus.ACTIVE)).thenReturn(List.of(active));
             when(accommodationRepository.findByStatus(AccommodationStatus.FULLY_BOOKED)).thenReturn(List.of(full));
             when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
-            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any())).thenReturn(5);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
 
             service.refreshAllAvailabilityStatuses();
 

@@ -44,6 +44,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -69,6 +70,12 @@ class BookingServiceImplTest {
     private RefundGateway refundGateway;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private com.tourlk.repo.PackageAddOnRepository addOnRepository;
+    @Mock
+    private RoomReservationService roomReservationService;
+    @Mock
+    private VehicleHireService vehicleHireService;
     /** Real policy (7 / 3 days, 50%) — it's pure logic, nothing to mock. */
     @Spy
     private CancellationPolicy cancellationPolicy = new CancellationPolicy(new CancellationPolicyProperties(7, 3, 50));
@@ -819,4 +826,154 @@ class BookingServiceImplTest {
 
         assertThat(bookingService.getBookingById(5L, tourist).getTotalPrice()).isEqualByComparingTo("240.00");
     }
+
+    // ------------------------------------------------------------------
+    // add-ons (rooms / vehicles attached to the package)
+    // ------------------------------------------------------------------
+
+    private void attachAddOns() {
+        com.tourlk.entity.PackageAddOn roomAddOn = com.tourlk.entity.PackageAddOn.builder()
+                .tourPackage(activePackage).room(com.tourlk.entity.Room.builder().id(7L).build()).build();
+        com.tourlk.entity.PackageAddOn vehicleAddOn = com.tourlk.entity.PackageAddOn.builder()
+                .tourPackage(activePackage).vehicle(com.tourlk.entity.Vehicle.builder().id(8L).build()).build();
+        when(addOnRepository.findByTourPackageId(100L)).thenReturn(List.of(roomAddOn, vehicleAddOn));
+    }
+
+    private BookingRequestDto requestWithAddOns(LocalDate travelDate) {
+        BookingRequestDto request = new BookingRequestDto(100L, travelDate, 2, null);
+        request.setAddOnRooms(List.of(new com.tourlk.dto.AddOnRoomSelectionDto(7L, 2)));
+        request.setAddOnVehicleIds(List.of(8L));
+        return request;
+    }
+
+    private com.tourlk.dto.RoomReservationResponseDto reservationPricedAt(String pricePerNight) {
+        return com.tourlk.dto.RoomReservationResponseDto.builder()
+                .room(com.tourlk.dto.RoomSummaryDto.builder().pricePerNight(new BigDecimal(pricePerNight)).build())
+                .build();
+    }
+
+    @Test
+    void createBooking_withAddOns_derivesDatesAndFreezesTheBreakdownTotal() {
+        activePackage.setDurationDays(4);
+        LocalDate travel = LocalDate.now().plusDays(30);
+        stubBookingSave();
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        attachAddOns();
+        // check-in = travel date, check-out = travel + (4 - 1) nights, vehicle held travel .. travel + 3
+        when(roomReservationService.createLinkedReservation(any(Booking.class), eq(7L), eq(2), eq(travel),
+                eq(travel.plusDays(3)))).thenReturn(reservationPricedAt("80.00"));
+        when(vehicleHireService.createLinkedHire(any(Booking.class), eq(8L), eq(travel), eq(travel.plusDays(3)),
+                any())).thenReturn(com.tourlk.dto.VehicleHireResponseDto.builder()
+                .totalPrice(new BigDecimal("400.00")).build());
+
+        BookingResponseDto result = bookingService.createBooking(requestWithAddOns(travel), tourist);
+
+        assertThat(result.getPackageSubtotal()).isEqualByComparingTo("240.00");    // 120 x 2 travelers
+        assertThat(result.getRoomsSubtotal()).isEqualByComparingTo("480.00");      // 80 x 3 nights x 2 rooms
+        assertThat(result.getVehiclesSubtotal()).isEqualByComparingTo("400.00");
+        assertThat(result.getTotalPrice()).isEqualByComparingTo("1120.00");
+    }
+
+    @Test
+    void createBooking_oneDayPackage_stillReservesRoomsForAtLeastOneNight() {
+        activePackage.setDurationDays(1);
+        LocalDate travel = LocalDate.now().plusDays(30);
+        stubBookingSave();
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        attachAddOns();
+        when(roomReservationService.createLinkedReservation(any(), any(), anyInt(), any(), any()))
+                .thenReturn(reservationPricedAt("10.00"));
+        BookingRequestDto request = new BookingRequestDto(100L, travel, 2, null);
+        request.setAddOnRooms(List.of(new com.tourlk.dto.AddOnRoomSelectionDto(7L, 1)));
+
+        bookingService.createBooking(request, tourist);
+
+        verify(roomReservationService).createLinkedReservation(any(), eq(7L), eq(1), eq(travel), eq(travel.plusDays(1)));
+    }
+
+    @Test
+    void createBooking_whenAnAddOnIsUnavailable_propagatesSoTheWholeBookingRollsBack() {
+        activePackage.setDurationDays(4);
+        stubBookingSave();
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        attachAddOns();
+        when(roomReservationService.createLinkedReservation(any(), any(), anyInt(), any(), any()))
+                .thenReturn(reservationPricedAt("10.00"));
+        when(vehicleHireService.createLinkedHire(any(), any(), any(), any(), any()))
+                .thenThrow(new com.tourlk.exception.VehicleUnavailableException("This vehicle is already booked."));
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestWithAddOns(LocalDate.now().plusDays(30)), tourist))
+                .isInstanceOf(com.tourlk.exception.VehicleUnavailableException.class)
+                .hasMessage("This vehicle is already booked.");
+    }
+
+    @Test
+    void createBooking_addOnNotAttachedToThePackage_isRejectedBeforeAnythingIsSaved() {
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
+        when(addOnRepository.findByTourPackageId(100L)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> bookingService.createBooking(requestWithAddOns(LocalDate.now().plusDays(30)), tourist))
+                .isInstanceOf(BadRequestException.class);
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void confirmBookingAfterPayment_confirmsLinkedReservationsAndHires() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+        when(tourPackageRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(activePackage));
+        when(bookingRepository.sumTravelersByPackageAndDateAndStatusIn(any(), any(), any())).thenReturn(0);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.confirmBookingAfterPayment(5L);
+
+        verify(roomReservationService).confirmLinkedAfterPayment(5L);
+        verify(vehicleHireService).confirmLinkedAfterPayment(5L);
+    }
+
+    @Test
+    void confirmBookingAfterPayment_whenGuideAlreadyConfirmed_stillConfirmsLinkedItems() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.CONFIRMED, tourist)));
+
+        bookingService.confirmBookingAfterPayment(5L);
+
+        verify(roomReservationService).confirmLinkedAfterPayment(5L);
+        verify(vehicleHireService).confirmLinkedAfterPayment(5L);
+    }
+
+    @Test
+    void cancelBooking_cancelsLinkedReservationsAndHires() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.CONFIRMED, tourist)));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.cancelBooking(5L, tourist);
+
+        verify(roomReservationService).cancelLinkedToBooking(5L);
+        verify(vehicleHireService).cancelLinkedToBooking(5L);
+    }
+
+    @Test
+    void rejectBooking_cancelsLinkedReservationsAndHires() {
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(booking(BookingStatus.PENDING, tourist)));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        bookingService.rejectBooking(5L, "Fully booked", guide);
+
+        verify(roomReservationService).cancelLinkedToBooking(5L);
+        verify(vehicleHireService).cancelLinkedToBooking(5L);
+    }
+
+    @Test
+    void expireUnpaidBooking_cancelsPendingBookingAndItsAddOns() {
+        Booking pending = booking(BookingStatus.PENDING, tourist);
+        when(bookingRepository.findById(5L)).thenReturn(Optional.of(pending));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(bookingService.expireUnpaidBooking(5L)).isTrue();
+
+        assertThat(pending.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        verify(roomReservationService).cancelLinkedToBooking(5L);
+        verify(vehicleHireService).cancelLinkedToBooking(5L);
+    }
+
 }

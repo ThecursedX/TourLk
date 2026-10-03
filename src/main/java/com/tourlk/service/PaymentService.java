@@ -1,5 +1,6 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.BulkDeletePaymentsResultDto;
 import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
 import com.tourlk.dto.PaymentRequestDto;
@@ -24,6 +25,16 @@ public interface PaymentService {
     void handlePaymentFailed(String stripePaymentIntentId);
 
     PaymentResponseDto refundPayment(Long paymentId);
+
+    /**
+     * Admin clean-up of a payment record: only PENDING, FAILED, REFUNDED (and never-completed CANCELLED)
+     * payments. A PENDING payment's Stripe PaymentIntent is cancelled first and its invoice removed.
+     * Never touches the booking / reservation / hire the payment was for.
+     */
+    void deletePayment(Long paymentId, User admin);
+
+    /** Applies {@link #deletePayment} to each id (max 200), skipping — not failing on — protected rows. */
+    BulkDeletePaymentsResultDto deletePayments(List<Long> ids, User admin);
 
     List<PaymentResponseDto> getPaymentsByUser(Long userId);
 

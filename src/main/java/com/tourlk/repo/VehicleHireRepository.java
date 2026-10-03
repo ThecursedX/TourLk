@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface VehicleHireRepository extends JpaRepository<VehicleHire, Long> {
@@ -17,8 +18,11 @@ public interface VehicleHireRepository extends JpaRepository<VehicleHire, Long> 
 
     List<VehicleHire> findByVehicleId(Long vehicleId);
 
+    List<VehicleHire> findByBookingId(Long bookingId);
+
     /**
-     * Whether a CONFIRMED hire of this vehicle already overlaps
+     * Whether a hire of this vehicle in one of {@code statuses} (PENDING and CONFIRMED hold it)
+     * other than {@code excludeId} already overlaps
      * [startDate, endDate]. A vehicle is a single unit (unlike a Room
      * type's totalRooms), so this is existence, not a sum: any overlap
      * at all makes the vehicle unavailable for the requested range.
@@ -38,11 +42,18 @@ public interface VehicleHireRepository extends JpaRepository<VehicleHire, Long> 
      * into one at a time.
      */
     @Query("SELECT COUNT(vh) > 0 FROM VehicleHire vh "
-            + "WHERE vh.vehicle.id = :vehicleId AND vh.status = :status "
+            + "WHERE vh.vehicle.id = :vehicleId AND vh.status IN :statuses AND vh.id <> :excludeId "
             + "AND vh.startDate <= :endDate AND vh.endDate >= :startDate")
     boolean existsOverlapping(@Param("vehicleId") Long vehicleId,
-                              @Param("status") VehicleHireStatus status,
+                              @Param("statuses") Collection<VehicleHireStatus> statuses,
                               @Param("startDate") LocalDate startDate,
-                              @Param("endDate") LocalDate endDate);
+                              @Param("endDate") LocalDate endDate,
+                              @Param("excludeId") Long excludeId);
+
+    /** Hires holding the vehicle (in {@code statuses}) that end on or after {@code from}, soonest first. */
+    List<VehicleHire> findByVehicleIdAndStatusInAndEndDateGreaterThanEqualOrderByStartDateAsc(
+            Long vehicleId, Collection<VehicleHireStatus> statuses, LocalDate from);
+
+    List<VehicleHire> findByStatusAndCreatedAtBefore(VehicleHireStatus status, java.time.LocalDateTime cutoff);
 
 }

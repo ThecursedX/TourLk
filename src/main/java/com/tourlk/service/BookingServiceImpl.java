@@ -1,12 +1,16 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.AddOnRoomSelectionDto;
 import com.tourlk.dto.BookingPackageSummaryDto;
 import com.tourlk.dto.BookingRequestDto;
 import com.tourlk.dto.BookingResponseDto;
 import com.tourlk.dto.CancellationPreviewResponseDto;
 import com.tourlk.dto.RescheduleRequestDto;
+import com.tourlk.dto.RoomReservationResponseDto;
+import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Booking;
 import com.tourlk.entity.Destination;
+import com.tourlk.entity.PackageAddOn;
 import com.tourlk.entity.PackageDeparture;
 import com.tourlk.entity.Payment;
 import com.tourlk.entity.TourPackage;
@@ -22,9 +26,11 @@ import com.tourlk.exception.CapacityExceededException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.BookingRepository;
+import com.tourlk.repo.PackageAddOnRepository;
 import com.tourlk.repo.PackageDepartureRepository;
 import com.tourlk.repo.PaymentRepository;
 import com.tourlk.repo.TourPackageRepository;
+import com.tourlk.util.AddOnDates;
 import com.tourlk.util.ClosureWindow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -35,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +81,9 @@ public class BookingServiceImpl implements BookingService {
     private final RefundGateway refundGateway;
     private final CancellationPolicy cancellationPolicy;
     private final NotificationService notificationService;
+    private final PackageAddOnRepository addOnRepository;
+    private final RoomReservationService roomReservationService;
+    private final VehicleHireService vehicleHireService;
 
     @Override
     @Transactional
@@ -86,17 +97,61 @@ public class BookingServiceImpl implements BookingService {
         assertDestinationOpenForTrip(tourPackage, request.getTravelDate());
         assertCapacityAvailable(tourPackage, request.getTravelDate(), request.getNumberOfTravelers(), true);
 
+        List<AddOnRoomSelectionDto> roomPicks =
+                request.getAddOnRooms() == null ? List.of() : request.getAddOnRooms();
+        List<Long> vehiclePicks =
+                request.getAddOnVehicleIds() == null ? List.of() : request.getAddOnVehicleIds();
+        assertAddOnsAttached(tourPackage, roomPicks, vehiclePicks);
+
+        BigDecimal packageSubtotal =
+                tourPackage.getPrice().multiply(BigDecimal.valueOf(request.getNumberOfTravelers()));
+
         Booking booking = Booking.builder()
                 .tourist(currentUser)
                 .tourPackage(tourPackage)
                 .travelDate(request.getTravelDate())
                 .numberOfTravelers(request.getNumberOfTravelers())
-                .totalPrice(tourPackage.getPrice().multiply(BigDecimal.valueOf(request.getNumberOfTravelers())))
+                .totalPrice(packageSubtotal)
+                .packageSubtotal(packageSubtotal)
+                .roomsSubtotal(BigDecimal.ZERO)
+                .vehiclesSubtotal(BigDecimal.ZERO)
                 .specialRequests(request.getSpecialRequests())
                 .status(BookingStatus.PENDING)
                 .build();
 
         booking = bookingRepository.save(booking);
+
+        // Add-ons are created in this same transaction: if any is unavailable its exception rolls back
+        // the whole booking.
+        if (!roomPicks.isEmpty() || !vehiclePicks.isEmpty()) {
+            LocalDate travelDate = request.getTravelDate();
+            int days = tourPackage.getDurationDays();
+            LocalDate checkIn = AddOnDates.roomCheckIn(travelDate);
+            LocalDate checkOut = AddOnDates.roomCheckOut(travelDate, days);
+            long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
+
+            BigDecimal roomsSubtotal = BigDecimal.ZERO;
+            for (AddOnRoomSelectionDto pick : roomPicks) {
+                RoomReservationResponseDto reservation = roomReservationService.createLinkedReservation(
+                        booking, pick.getRoomId(), pick.getNumberOfRooms(), checkIn, checkOut);
+                roomsSubtotal = roomsSubtotal.add(reservation.getRoom().getPricePerNight()
+                        .multiply(BigDecimal.valueOf(nights))
+                        .multiply(BigDecimal.valueOf(pick.getNumberOfRooms())));
+            }
+
+            BigDecimal vehiclesSubtotal = BigDecimal.ZERO;
+            String pickup = tourPackage.getDestination().getName() + " (package pickup)";
+            for (Long vehicleId : vehiclePicks) {
+                VehicleHireResponseDto hire = vehicleHireService.createLinkedHire(booking, vehicleId,
+                        AddOnDates.vehicleStart(travelDate), AddOnDates.vehicleEnd(travelDate, days), pickup);
+                vehiclesSubtotal = vehiclesSubtotal.add(hire.getTotalPrice());
+            }
+
+            booking.setRoomsSubtotal(roomsSubtotal);
+            booking.setVehiclesSubtotal(vehiclesSubtotal);
+            booking.setTotalPrice(packageSubtotal.add(roomsSubtotal).add(vehiclesSubtotal));
+            booking = bookingRepository.save(booking);
+        }
 
         notificationService.notify(tourPackage.getCreatedBy(), NotificationType.BOOKING_CREATED,
                 "New booking on " + tourPackage.getTitle(),
@@ -122,6 +177,11 @@ public class BookingServiceImpl implements BookingService {
         // The guide/admin may already have confirmed it before the tourist paid.
         if (booking.getStatus() == BookingStatus.PENDING) {
             confirm(booking);
+        }
+        // Paying the booking pays for its rooms/vehicles too.
+        if (CAPACITY_HOLDING_STATUSES.contains(booking.getStatus())) {
+            roomReservationService.confirmLinkedAfterPayment(booking.getId());
+            vehicleHireService.confirmLinkedAfterPayment(booking.getId());
         }
     }
 
@@ -192,6 +252,13 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.RESCHEDULED);
         booking = bookingRepository.save(booking);
 
+        // Rooms/vehicles follow the trip; fails (rolling the reschedule back) if they are taken on the new dates.
+        int days = tourPackage.getDurationDays();
+        roomReservationService.moveLinkedToDates(booking.getId(), AddOnDates.roomCheckIn(booking.getTravelDate()),
+                AddOnDates.roomCheckOut(booking.getTravelDate(), days));
+        vehicleHireService.moveLinkedToDates(booking.getId(), AddOnDates.vehicleStart(booking.getTravelDate()),
+                AddOnDates.vehicleEnd(booking.getTravelDate(), days));
+
         notifyTourist(booking, NotificationType.BOOKING_RESCHEDULE_APPROVED, "Reschedule approved",
                 "Your reschedule request for " + booking.getTourPackage().getTitle()
                         + " has been approved — new date: " + booking.getTravelDate());
@@ -230,6 +297,7 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.CANCELLED);
         booking = bookingRepository.save(booking);
+        cancelLinkedAddOns(booking);
 
         notifyTourist(booking, NotificationType.BOOKING_CANCELLED, "Booking cancelled",
                 "Your booking for " + booking.getTourPackage().getTitle() + " has been cancelled");
@@ -276,12 +344,35 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.REJECTED);
         booking.setRejectionReason(reason.trim());
         booking = bookingRepository.save(booking);
+        cancelLinkedAddOns(booking);
 
         notifyTourist(booking, NotificationType.BOOKING_REJECTED, "Booking rejected",
                 "Your booking for " + booking.getTourPackage().getTitle() + " was not approved. Reason: "
                         + booking.getRejectionReason());
 
         return toResponse(booking);
+    }
+
+    @Override
+    @Transactional
+    public boolean expireUnpaidBooking(Long id) {
+        Booking booking = bookingRepository.findById(id).orElse(null);
+        if (booking == null || booking.getStatus() != BookingStatus.PENDING) {
+            return false;
+        }
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setRejectionReason("Not paid in time");
+        booking = bookingRepository.save(booking);
+        cancelLinkedAddOns(booking);
+        notifyTourist(booking, NotificationType.BOOKING_CANCELLED, "Booking expired",
+                "Your booking for " + booking.getTourPackage().getTitle()
+                        + " was cancelled because it was not paid in time");
+        return true;
+    }
+
+    private void cancelLinkedAddOns(Booking booking) {
+        roomReservationService.cancelLinkedToBooking(booking.getId());
+        vehicleHireService.cancelLinkedToBooking(booking.getId());
     }
 
     @Override
@@ -344,6 +435,43 @@ public class BookingServiceImpl implements BookingService {
                         Sort.by(Sort.Direction.DESC, "createdAt")).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    /** Every chosen room/vehicle must actually be attached to this package, and chosen at most once. */
+    private void assertAddOnsAttached(TourPackage tourPackage, List<AddOnRoomSelectionDto> roomPicks,
+                                      List<Long> vehiclePicks) {
+        if (roomPicks.isEmpty() && vehiclePicks.isEmpty()) {
+            return;
+        }
+        Set<Long> attachedRooms = new HashSet<>();
+        Set<Long> attachedVehicles = new HashSet<>();
+        for (PackageAddOn addOn : addOnRepository.findByTourPackageId(tourPackage.getId())) {
+            if (addOn.getRoom() != null) {
+                attachedRooms.add(addOn.getRoom().getId());
+            }
+            if (addOn.getVehicle() != null) {
+                attachedVehicles.add(addOn.getVehicle().getId());
+            }
+        }
+
+        Set<Long> seenRooms = new HashSet<>();
+        for (AddOnRoomSelectionDto pick : roomPicks) {
+            if (!attachedRooms.contains(pick.getRoomId())) {
+                throw new BadRequestException("Room " + pick.getRoomId() + " is not an add-on of this package");
+            }
+            if (!seenRooms.add(pick.getRoomId())) {
+                throw new BadRequestException("Each room can only be added once (use the number of rooms)");
+            }
+        }
+        Set<Long> seenVehicles = new HashSet<>();
+        for (Long vehicleId : vehiclePicks) {
+            if (!attachedVehicles.contains(vehicleId)) {
+                throw new BadRequestException("Vehicle " + vehicleId + " is not an add-on of this package");
+            }
+            if (!seenVehicles.add(vehicleId)) {
+                throw new BadRequestException("Each vehicle can only be added once");
+            }
+        }
     }
 
     /**
@@ -518,6 +646,13 @@ public class BookingServiceImpl implements BookingService {
                 .travelDate(booking.getTravelDate())
                 .numberOfTravelers(booking.getNumberOfTravelers())
                 .totalPrice(totalPriceOf(booking))
+                .packageSubtotal(booking.getPackageSubtotal() != null
+                        ? booking.getPackageSubtotal() : totalPriceOf(booking))
+                .roomsSubtotal(booking.getRoomsSubtotal() != null ? booking.getRoomsSubtotal() : BigDecimal.ZERO)
+                .vehiclesSubtotal(booking.getVehiclesSubtotal() != null
+                        ? booking.getVehiclesSubtotal() : BigDecimal.ZERO)
+                .roomReservations(roomReservationService.getLinkedToBooking(booking.getId()))
+                .vehicleHires(vehicleHireService.getLinkedToBooking(booking.getId()))
                 .specialRequests(booking.getSpecialRequests())
                 .status(booking.getStatus())
                 .previousTravelDate(booking.getPreviousTravelDate())

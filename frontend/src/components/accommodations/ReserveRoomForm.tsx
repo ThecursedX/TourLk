@@ -63,7 +63,7 @@ export default function ReserveRoomForm({ roomId, onClose }: ReserveRoomFormProp
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-md border border-slate-200 p-4" noValidate>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft" noValidate>
       <div className="grid grid-cols-3 gap-3">
         <Input
           id={`checkIn-${roomId}`}

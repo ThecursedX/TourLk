@@ -7,6 +7,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import BookingStatusBadge from '../../components/bookings/BookingStatusBadge'
 import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
+import BookingAddOnsSummary from '../../components/bookings/BookingAddOnsSummary'
 import type { BookingResponseDto } from '../../types/booking'
 
 const CANCELLABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'RESCHEDULED'])
@@ -93,6 +94,7 @@ export default function BookingDetailPage() {
             <dd className="text-slate-900">{booking.touristName}</dd>
           </div>
         </div>
+        <BookingAddOnsSummary booking={booking} />
         {booking.requestedTravelDate && (
           <p className="text-sm text-sky-700">
             Requested new travel date: {booking.requestedTravelDate} (awaiting admin decision)

@@ -1,3 +1,6 @@
+import type { RoomReservationResponseDto } from './accommodation'
+import type { VehicleHireResponseDto } from './vehicle'
+
 export type BookingStatus =
   | 'PENDING'
   | 'CONFIRMED'
@@ -13,6 +16,8 @@ export interface BookingRequestDto {
   travelDate: string
   numberOfTravelers: number
   specialRequests?: string
+  addOnRooms?: { roomId: number; numberOfRooms: number }[]
+  addOnVehicleIds?: number[]
 }
 
 // Matches com.tourlk.dto.RescheduleRequestDto
@@ -38,6 +43,13 @@ export interface BookingResponseDto {
   numberOfTravelers: number
   /** Fixed when the booking was made — what the tourist pays, even if the package is repriced later. */
   totalPrice: number
+  /** totalPrice = packageSubtotal + roomsSubtotal + vehiclesSubtotal. */
+  packageSubtotal: number
+  roomsSubtotal: number
+  vehiclesSubtotal: number
+  /** Hotel rooms / vehicles added to this booking; paid for by it. */
+  roomReservations: RoomReservationResponseDto[]
+  vehicleHires: VehicleHireResponseDto[]
   specialRequests: string | null
   status: BookingStatus
   previousTravelDate: string | null

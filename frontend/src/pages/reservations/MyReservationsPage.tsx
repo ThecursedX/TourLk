@@ -78,13 +78,16 @@ export default function MyReservationsPage() {
             reservation={reservation}
             footer={
               <div className="flex flex-col gap-2">
+                {reservation.bookingId && (
+                  <p className="text-xs text-slate-500">Paid and managed with your package booking.</p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  {reservation.status === 'PENDING' && (
+                  {reservation.status === 'PENDING' && !reservation.bookingId && (
                     <Link to={`/checkout/reservation/${reservation.id}`}>
                       <Button disabled={busyId === reservation.id}>Pay Now</Button>
                     </Link>
                   )}
-                  {CANCELLABLE.has(reservation.status) && (
+                  {CANCELLABLE.has(reservation.status) && !reservation.bookingId && (
                     <Button
                       variant="secondary"
                       disabled={busyId === reservation.id}

@@ -53,6 +53,10 @@ class DestinationClosureBookingServiceTest {
     @Mock
     private NotificationService notificationService;
     @Mock
+    private RoomReservationService roomReservationService;
+    @Mock
+    private VehicleHireService vehicleHireService;
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     private DestinationClosureBookingService service;
@@ -64,7 +68,8 @@ class DestinationClosureBookingServiceTest {
     @BeforeEach
     void setUp() {
         service = new DestinationClosureBookingService(
-                bookingRepository, paymentRepository, refundGateway, notificationService, transactionManager);
+                bookingRepository, paymentRepository, refundGateway, notificationService,
+                roomReservationService, vehicleHireService, transactionManager);
         tourist = User.builder().id(1L).name("Tess").role(Role.TOURIST).build();
         guide = User.builder().id(3L).name("Gina").role(Role.GUIDE).build();
         tourPackage = TourPackage.builder().id(100L).title("Hill Country").durationDays(3)

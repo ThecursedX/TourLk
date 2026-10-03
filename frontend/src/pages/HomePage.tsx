@@ -136,14 +136,14 @@ export default function HomePage() {
           aria-hidden="true"
           className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-50/92 via-slate-50/96 to-slate-50/92" />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-900/55 via-slate-900/60 to-slate-900/55" />
 
         <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-16 px-4 py-16">
           {/* Categories */}
           <div className="flex flex-col gap-6">
             <div>
-              <h2 className="font-display text-2xl font-bold text-slate-900">Everything for your trip, in one place</h2>
-              <p className="mt-1 text-slate-600">Browse by category, or let a local guide plan it for you.</p>
+              <h2 className="font-display text-2xl font-bold text-white">Everything for your trip, in one place</h2>
+              <p className="mt-1 text-white/90">Browse by category, or let a local guide plan it for you.</p>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Link
@@ -224,10 +224,10 @@ export default function HomePage() {
             <div className="flex flex-col gap-6">
               <div className="flex items-end justify-between">
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-slate-900">Featured tour packages</h2>
-                  <p className="mt-1 text-slate-600">Popular itineraries available right now.</p>
+                  <h2 className="font-display text-2xl font-bold text-white">Featured tour packages</h2>
+                  <p className="mt-1 text-white/90">Popular itineraries available right now.</p>
                 </div>
-                <Link to="/packages" className="text-sm font-semibold text-blue-600 hover:underline">
+                <Link to="/packages" className="text-sm font-semibold text-white underline-offset-4 hover:underline">
                   View all packages &rarr;
                 </Link>
               </div>

@@ -11,6 +11,7 @@ import com.tourlk.repo.BookingRepository;
 import com.tourlk.repo.PaymentRepository;
 import com.tourlk.util.ClosureWindow;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -40,17 +41,24 @@ public class DestinationClosureBookingService {
     private final PaymentRepository paymentRepository;
     private final RefundGateway refundGateway;
     private final NotificationService notificationService;
+    private final RoomReservationService roomReservationService;
+    private final VehicleHireService vehicleHireService;
     private final TransactionTemplate perBookingTransaction;
 
     public DestinationClosureBookingService(BookingRepository bookingRepository,
                                             PaymentRepository paymentRepository,
                                             RefundGateway refundGateway,
                                             NotificationService notificationService,
+                                            // @Lazy: AccommodationService -> DestinationService -> this -> room reservations is a cycle.
+                                            @Lazy RoomReservationService roomReservationService,
+                                            @Lazy VehicleHireService vehicleHireService,
                                             PlatformTransactionManager transactionManager) {
         this.bookingRepository = bookingRepository;
         this.paymentRepository = paymentRepository;
         this.refundGateway = refundGateway;
         this.notificationService = notificationService;
+        this.roomReservationService = roomReservationService;
+        this.vehicleHireService = vehicleHireService;
         this.perBookingTransaction = new TransactionTemplate(transactionManager);
         this.perBookingTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -125,6 +133,8 @@ public class DestinationClosureBookingService {
         booking.setRequestedTravelDate(null);
         booking.setStatusBeforeReschedule(null);
         bookingRepository.save(booking);
+        roomReservationService.cancelLinkedToBooking(bookingId);
+        vehicleHireService.cancelLinkedToBooking(bookingId);
 
         String title = booking.getTourPackage().getTitle();
         notificationService.notify(booking.getTourist(), NotificationType.BOOKING_CANCELLED, "Booking cancelled",

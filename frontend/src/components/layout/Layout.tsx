@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
-import pageBackground from '../../assets/page-bg-surfers.jpg'
+import pageBackground from '../../assets/img.png'
 
 interface LayoutProps {
   children: ReactNode
@@ -34,7 +34,7 @@ export default function Layout({ children }: LayoutProps) {
             alt=""
             className="h-full w-full scale-110 object-cover blur-sm"
           />
-          <div className="absolute inset-0 bg-slate-50/55" />
+          <div className="absolute inset-0 bg-slate-40/10" />
         </div>
       )}
       <Navbar />

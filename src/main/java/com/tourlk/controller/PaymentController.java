@@ -4,6 +4,8 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.Webhook;
+import com.tourlk.dto.BulkDeletePaymentsRequestDto;
+import com.tourlk.dto.BulkDeletePaymentsResultDto;
 import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
 import com.tourlk.dto.PaymentRequestDto;
@@ -22,6 +24,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -92,6 +95,20 @@ public class PaymentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PaymentResponseDto> refund(@PathVariable Long id) {
         return ResponseEntity.ok(paymentService.refundPayment(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        paymentService.deletePayment(id, currentUser(authentication));
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/bulk")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<BulkDeletePaymentsResultDto> bulkDelete(
+            @Valid @RequestBody BulkDeletePaymentsRequestDto request, Authentication authentication) {
+        return ResponseEntity.ok(paymentService.deletePayments(request.getIds(), currentUser(authentication)));
     }
 
     @GetMapping

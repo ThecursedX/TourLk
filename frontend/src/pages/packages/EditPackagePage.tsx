@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { getPackageById, updatePackage } from '../../api/tourPackageApi'
+import { getPackageById, replacePackageAddOns, updatePackage } from '../../api/tourPackageApi'
 import PackageForm from '../../components/packages/PackageForm'
 import Card from '../../components/ui/Card'
 import type { ErrorResponse } from '../../types/auth'
-import type { TourPackageRequestDto } from '../../types/tourPackage'
+import type { PackageAddOnItemDto, TourPackageRequestDto } from '../../types/tourPackage'
 import type { DestinationSummary } from '../../types/destination'
 
 export default function EditPackagePage() {
@@ -13,6 +13,7 @@ export default function EditPackagePage() {
   const navigate = useNavigate()
   const [initialValues, setInitialValues] = useState<TourPackageRequestDto | null>(null)
   const [currentDestination, setCurrentDestination] = useState<DestinationSummary | null>(null)
+  const [initialAddOns, setInitialAddOns] = useState<PackageAddOnItemDto[]>([])
   const [rejectionReason, setRejectionReason] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +41,13 @@ export default function EditPackagePage() {
           exclusions: pkg.exclusions,
           imageUrls: pkg.imageUrls,
         })
+        setInitialAddOns(
+          (pkg.addOns ?? []).map((a) =>
+            a.room
+              ? { roomId: a.room.id, note: a.note ?? undefined }
+              : { vehicleId: a.vehicle?.id, note: a.note ?? undefined },
+          ),
+        )
         setCurrentDestination(pkg.destination)
         setRejectionReason(pkg.status === 'DRAFT' ? pkg.rejectionReason : null)
       })
@@ -53,7 +61,7 @@ export default function EditPackagePage() {
    * confirmChanges. Cancelling just leaves the form as it is. Any other
    * error is rethrown for PackageForm to display.
    */
-  const handleSubmit = async (values: TourPackageRequestDto) => {
+  const handleSubmit = async (values: TourPackageRequestDto, addOns: PackageAddOnItemDto[]) => {
     if (!id) return
     try {
       await updatePackage(Number(id), values)
@@ -69,6 +77,7 @@ Save these changes anyway?`,
       if (!confirmed) return
       await updatePackage(Number(id), values, true)
     }
+    await replacePackageAddOns(Number(id), addOns)
     navigate(`/packages/${id}`)
   }
 
@@ -93,6 +102,7 @@ Save these changes anyway?`,
           initialValues={initialValues}
           currentDestination={currentDestination}
           packageId={Number(id)}
+          initialAddOns={initialAddOns}
           onSubmit={handleSubmit}
           submitLabel="Save Changes"
           submittingLabel="Saving..."

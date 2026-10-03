@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import TagInput from '../ui/TagInput'
 import ImageUrlListInput, { cleanImageUrls } from '../ui/ImageUrlListInput'
 import DestinationSelect from '../destinations/DestinationSelect'
+import LocationPicker from '../maps/LocationPicker'
+import { getDestinationById } from '../../api/destinationApi'
 import type { ErrorResponse } from '../../types/auth'
 import { MAX_ACCOMMODATION_IMAGES, type AccommodationRequestDto } from '../../types/accommodation'
-import type { DestinationSummary } from '../../types/destination'
+import { hasCoordinates, type DestinationSummary } from '../../types/destination'
 
 interface AccommodationFormProps {
   initialValues?: AccommodationRequestDto
@@ -24,6 +26,8 @@ const emptyValues: AccommodationRequestDto = {
   locationId: '',
   starRating: undefined,
   address: '',
+  latitude: null,
+  longitude: null,
   facilities: [],
   policies: '',
   imageUrls: [],
@@ -40,6 +44,28 @@ export default function AccommodationForm({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // Where the picker opens until a position is chosen: the hotel's destination, when it has coordinates.
+  const [destinationCenter, setDestinationCenter] = useState<{ lat: number; lng: number } | null>(
+    currentLocation && hasCoordinates(currentLocation)
+      ? { lat: currentLocation.latitude as number, lng: currentLocation.longitude as number }
+      : null,
+  )
+
+  useEffect(() => {
+    if (values.locationId === '') {
+      setDestinationCenter(null)
+      return
+    }
+    let cancelled = false
+    getDestinationById(values.locationId)
+      .then((d) => {
+        if (!cancelled) setDestinationCenter(hasCoordinates(d) ? { lat: d.latitude as number, lng: d.longitude as number } : null)
+      })
+      .catch(() => !cancelled && setDestinationCenter(null))
+    return () => {
+      cancelled = true
+    }
+  }, [values.locationId])
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {}
@@ -146,6 +172,35 @@ export default function AccommodationForm({
         onChange={(e) => setValues((v) => ({ ...v, address: e.target.value }))}
         error={fieldErrors.address}
       />
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-slate-700">Map location (optional)</span>
+        <LocationPicker
+          value={
+            values.latitude != null && values.longitude != null
+              ? { lat: values.latitude, lng: values.longitude }
+              : null
+          }
+          defaultCenter={destinationCenter}
+          onChange={({ lat, lng }) => setValues((v) => ({ ...v, latitude: lat, longitude: lng }))}
+        />
+        {values.latitude != null && values.longitude != null && (
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <span>
+              {values.latitude}, {values.longitude}
+            </span>
+            <button
+              type="button"
+              className="font-medium text-blue-600 hover:underline"
+              onClick={() => setValues((v) => ({ ...v, latitude: null, longitude: null }))}
+            >
+              Remove location
+            </button>
+          </div>
+        )}
+        {(fieldErrors.latitude || fieldErrors.longitude) && (
+          <span className="text-sm text-red-600">{fieldErrors.latitude ?? fieldErrors.longitude}</span>
+        )}
+      </div>
       <TagInput
         label="Facilities (optional)"
         values={values.facilities ?? []}

@@ -25,6 +25,8 @@ export interface AccommodationRequestDto {
   locationId: number | ''
   starRating?: number
   address?: string
+  latitude?: number | null
+  longitude?: number | null
   facilities?: string[]
   policies?: string
   imageUrls?: string[]
@@ -60,6 +62,8 @@ export interface AccommodationResponseDto {
   location: DestinationSummary
   starRating: number | null
   address: string | null
+  latitude: number | null
+  longitude: number | null
   facilities: string[]
   policies: string | null
   imageUrls: string[]
@@ -98,5 +102,8 @@ export interface RoomReservationResponseDto {
   checkOutDate: string
   numberOfRooms: number
   status: RoomReservationStatus
+  /** Set when this is an add-on of a package booking — the booking pays for it. */
+  bookingId: number | null
+  packageTitle: string | null
   createdAt: string
 }

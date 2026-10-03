@@ -86,6 +86,8 @@ export default function EditAccommodationPage() {
             locationId: accommodation.location.id,
             starRating: accommodation.starRating ?? undefined,
             address: accommodation.address ?? '',
+            latitude: accommodation.latitude,
+            longitude: accommodation.longitude,
             facilities: accommodation.facilities,
             policies: accommodation.policies ?? '',
             imageUrls: accommodation.imageUrls,

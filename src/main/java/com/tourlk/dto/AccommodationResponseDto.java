@@ -24,6 +24,8 @@ public class AccommodationResponseDto {
     private DestinationResponseDto location;
     private Integer starRating;
     private String address;
+    private Double latitude;
+    private Double longitude;
     private List<String> facilities;
     private String policies;
     private List<String> imageUrls;

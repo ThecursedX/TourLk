@@ -385,12 +385,15 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void handlePaymentSucceeded_unknownIntent_throwsResourceNotFound() {
+        void handlePaymentSucceeded_unknownIntent_isIgnoredSoStripeStopsRetrying() {
             when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> paymentService.handlePaymentSucceeded("pi_missing"))
-                    .isInstanceOf(ResourceNotFoundException.class);
+            paymentService.handlePaymentSucceeded("pi_missing"); // must not throw
+
+            verify(bookingService, never()).confirmBookingAfterPayment(any());
+            verify(invoiceRepository, never()).save(any());
         }
+
     }
 
     // ------------------------------------------------------------------
@@ -424,11 +427,11 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void handlePaymentFailed_unknownIntent_throwsResourceNotFound() {
+        void handlePaymentFailed_unknownIntent_isIgnoredSoStripeStopsRetrying() {
             when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> paymentService.handlePaymentFailed("pi_missing"))
-                    .isInstanceOf(ResourceNotFoundException.class);
+            paymentService.handlePaymentFailed("pi_missing"); // must not throw
+            verify(paymentRepository, never()).save(any());
         }
     }
 
@@ -554,4 +557,127 @@ class PaymentServiceImplTest {
         when(intent.getClientSecret()).thenReturn(clientSecret);
         return intent;
     }
+
+    // ------------------------------------------------------------------
+    // deletePayment / deletePayments (admin clean-up)
+    // ------------------------------------------------------------------
+
+    @Nested
+    class DeletePayment {
+
+        private User admin = User.builder().id(9L).role(Role.ADMIN).build();
+
+        private Payment payment(Long id, PaymentStatus status, String intentId) {
+            return Payment.builder().id(id).payer(tourist).payableType(PayableType.BOOKING).payableId(5L)
+                    .amount(new BigDecimal("100.00")).currency("usd").stripePaymentIntentId(intentId)
+                    .status(status).build();
+        }
+
+        @Test
+        void failedAndPendingWithoutIntent_areDeleted() {
+            Payment failed = payment(1L, PaymentStatus.FAILED, "pi_f");
+            Payment pending = payment(2L, PaymentStatus.PENDING, null);
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(failed));
+            when(paymentRepository.findById(2L)).thenReturn(Optional.of(pending));
+            when(invoiceRepository.findByPaymentId(any())).thenReturn(Optional.empty());
+
+            paymentService.deletePayment(1L, admin);
+            paymentService.deletePayment(2L, admin);
+
+            verify(paymentRepository).delete(failed);
+            verify(paymentRepository).delete(pending);
+            verify(bookingService, never()).cancelBooking(any(), any());
+        }
+
+        @Test
+        void refunded_isDeletedTogetherWithItsInvoice() {
+            Payment refunded = payment(3L, PaymentStatus.REFUNDED, "pi_r");
+            Invoice invoice = Invoice.builder().id(30L).payment(refunded).build();
+            when(paymentRepository.findById(3L)).thenReturn(Optional.of(refunded));
+            when(invoiceRepository.findByPaymentId(3L)).thenReturn(Optional.of(invoice));
+
+            paymentService.deletePayment(3L, admin);
+
+            org.mockito.InOrder order = org.mockito.Mockito.inOrder(invoiceRepository, paymentRepository);
+            order.verify(invoiceRepository).delete(invoice);
+            order.verify(paymentRepository).delete(refunded);
+        }
+
+        @Test
+        void succeededAndRefundPending_areRejectedWithTheClearMessage() {
+            for (PaymentStatus status : new PaymentStatus[] {PaymentStatus.SUCCEEDED, PaymentStatus.REFUND_PENDING}) {
+                Payment protectedPayment = payment(4L, status, "pi_s");
+                when(paymentRepository.findById(4L)).thenReturn(Optional.of(protectedPayment));
+
+                assertThatThrownBy(() -> paymentService.deletePayment(4L, admin))
+                        .isInstanceOf(InvalidStatusTransitionException.class)
+                        .hasMessage("Payments that have succeeded or have a refund in progress cannot be deleted.");
+                verify(paymentRepository, never()).delete(protectedPayment);
+            }
+        }
+
+        @Test
+        void pending_alreadySucceededInStripe_abortsTheDelete() throws Exception {
+            Payment pending = payment(5L, PaymentStatus.PENDING, "pi_paid");
+            when(paymentRepository.findById(5L)).thenReturn(Optional.of(pending));
+            com.stripe.model.PaymentIntent intent = org.mockito.Mockito.mock(com.stripe.model.PaymentIntent.class);
+            when(intent.getStatus()).thenReturn("succeeded");
+
+            try (org.mockito.MockedStatic<com.stripe.model.PaymentIntent> stripe =
+                         org.mockito.Mockito.mockStatic(com.stripe.model.PaymentIntent.class)) {
+                stripe.when(() -> com.stripe.model.PaymentIntent.retrieve("pi_paid")).thenReturn(intent);
+
+                assertThatThrownBy(() -> paymentService.deletePayment(5L, admin))
+                        .isInstanceOf(InvalidStatusTransitionException.class)
+                        .hasMessageContaining("refresh");
+            }
+            verify(paymentRepository, never()).delete(pending);
+            verify(intent, never()).cancel();
+        }
+
+        @Test
+        void pending_openInStripe_isCancelledThenDeleted() throws Exception {
+            Payment pending = payment(6L, PaymentStatus.PENDING, "pi_open");
+            when(paymentRepository.findById(6L)).thenReturn(Optional.of(pending));
+            when(invoiceRepository.findByPaymentId(6L)).thenReturn(Optional.empty());
+            com.stripe.model.PaymentIntent intent = org.mockito.Mockito.mock(com.stripe.model.PaymentIntent.class);
+            when(intent.getStatus()).thenReturn("requires_payment_method");
+
+            try (org.mockito.MockedStatic<com.stripe.model.PaymentIntent> stripe =
+                         org.mockito.Mockito.mockStatic(com.stripe.model.PaymentIntent.class)) {
+                stripe.when(() -> com.stripe.model.PaymentIntent.retrieve("pi_open")).thenReturn(intent);
+
+                paymentService.deletePayment(6L, admin);
+            }
+            verify(intent).cancel();
+            verify(paymentRepository).delete(pending);
+        }
+
+        @Test
+        void bulk_skipsProtectedAndMissingRows_andDeletesTheRest() {
+            Payment ok = payment(1L, PaymentStatus.FAILED, "pi_f");
+            Payment succeeded = payment(2L, PaymentStatus.SUCCEEDED, "pi_s");
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(ok));
+            when(paymentRepository.findById(2L)).thenReturn(Optional.of(succeeded));
+            when(paymentRepository.findById(3L)).thenReturn(Optional.empty());
+            when(invoiceRepository.findByPaymentId(1L)).thenReturn(Optional.empty());
+
+            var result = paymentService.deletePayments(java.util.List.of(1L, 2L, 3L, 1L), admin);
+
+            assertThat(result.getDeleted()).isEqualTo(1);
+            assertThat(result.getSkipped()).extracting(s -> s.getId()).containsExactly(2L, 3L);
+            assertThat(result.getSkipped().get(0).getReason()).contains("cannot be deleted");
+            verify(paymentRepository).delete(ok);
+            verify(paymentRepository, never()).delete(succeeded);
+        }
+
+        @Test
+        void bulk_moreThan200_isRejected() {
+            java.util.List<Long> ids = java.util.stream.LongStream.rangeClosed(1, 201).boxed().toList();
+
+            assertThatThrownBy(() -> paymentService.deletePayments(ids, admin))
+                    .isInstanceOf(com.tourlk.exception.BadRequestException.class);
+        }
+    }
+
 }

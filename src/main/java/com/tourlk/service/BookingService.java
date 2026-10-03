@@ -44,6 +44,12 @@ public interface BookingService {
      */
     BookingResponseDto rejectBooking(Long id, String reason, User currentUser);
 
+    /**
+     * Cancels a still-PENDING booking that has add-ons and was never paid (their rooms/vehicles stay held
+     * until then); returns whether it was cancelled.
+     */
+    boolean expireUnpaidBooking(Long id);
+
     BookingResponseDto completeBooking(Long id);
 
     BookingResponseDto getBookingById(Long id, User currentUser);

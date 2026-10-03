@@ -74,6 +74,13 @@ public class Accommodation extends AuditableEntity {
     @Column(length = 500)
     private String address;
 
+    /** Map position, both set or both null. Optional; existing rows stay null. */
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "accommodation_facilities", joinColumns = @JoinColumn(name = "accommodation_id"))
     @OrderColumn(name = "display_order")

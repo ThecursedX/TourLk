@@ -5,10 +5,14 @@ import { createHire } from '../../api/vehicleHireApi'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import type { ErrorResponse } from '../../types/auth'
+import type { BookedDateRange } from '../../types/vehicle'
+import { formatShortDate } from '../../utils/date'
+import BookedDatesList from './BookedDatesList'
 
 interface HireVehicleFormProps {
   vehicleId: number
   pricePerDay: number
+  bookedRanges: BookedDateRange[]
 }
 
 function tomorrow(): string {
@@ -17,7 +21,7 @@ function tomorrow(): string {
   return d.toISOString().slice(0, 10)
 }
 
-export default function HireVehicleForm({ vehicleId, pricePerDay }: HireVehicleFormProps) {
+export default function HireVehicleForm({ vehicleId, pricePerDay, bookedRanges }: HireVehicleFormProps) {
   const navigate = useNavigate()
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -33,6 +37,17 @@ export default function HireVehicleForm({ vehicleId, pricePerDay }: HireVehicleF
       : null
   const priceEstimate = days ? days * pricePerDay : null
 
+  // Native date inputs can't disable single days, so flag a clashing range as soon as it is chosen.
+  // Ranges are inclusive on both ends, matching the backend's overlap rule.
+  const findClash = (start: string, end: string): BookedDateRange | undefined =>
+    start && end && end >= start
+      ? bookedRanges.find((r) => start <= r.endDate && end >= r.startDate)
+      : undefined
+  const clash = findClash(startDate, endDate)
+  const clashMessage = clash
+    ? `This vehicle is already booked from ${formatShortDate(clash.startDate)} to ${formatShortDate(clash.endDate)}.`
+    : undefined
+
   const validate = (): boolean => {
     const errors: Record<string, string> = {}
     if (!startDate) errors.startDate = 'Start date is required'
@@ -42,6 +57,7 @@ export default function HireVehicleForm({ vehicleId, pricePerDay }: HireVehicleF
       errors.endDate = 'End date must be on or after start date'
     }
     if (!pickupLocation.trim()) errors.pickupLocation = 'Pickup location is required'
+    if (clashMessage) errors.endDate = clashMessage
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -92,9 +108,10 @@ export default function HireVehicleForm({ vehicleId, pricePerDay }: HireVehicleF
           min={startDate || tomorrow()}
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
-          error={fieldErrors.endDate}
+          error={clashMessage ?? fieldErrors.endDate}
         />
       </div>
+      <BookedDatesList ranges={bookedRanges} />
       <Input
         id="pickupLocation"
         label="Pickup location"
@@ -125,7 +142,7 @@ export default function HireVehicleForm({ vehicleId, pricePerDay }: HireVehicleF
         </p>
       )}
       {formError && <p className="text-sm text-red-600">{formError}</p>}
-      <Button type="submit" disabled={submitting} className="self-start">
+      <Button type="submit" disabled={submitting || !!clashMessage} className="self-start">
         {submitting ? 'Hiring...' : 'Hire Now'}
       </Button>
     </form>

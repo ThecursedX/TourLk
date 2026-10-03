@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { BookingResponseDto } from '../../types/booking'
 import Card from '../ui/Card'
 import BookingStatusBadge from './BookingStatusBadge'
+import BookingAddOnsSummary from './BookingAddOnsSummary'
 
 interface BookingCardProps {
   booking: BookingResponseDto
@@ -36,6 +37,7 @@ export default function BookingCard({ booking, footer }: BookingCardProps) {
       {booking.previousTravelDate && (
         <p className="text-xs text-slate-500">Originally booked for {booking.previousTravelDate}</p>
       )}
+      <BookingAddOnsSummary booking={booking} compact />
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link
           to={`/bookings/${booking.id}`}

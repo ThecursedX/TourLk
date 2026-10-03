@@ -296,7 +296,7 @@ public class AccommodationServiceImpl implements AccommodationService {
 
         LocalDate today = LocalDate.now();
         return rooms.stream().noneMatch(room -> roomReservationRepository.sumReservedRoomsOverlapping(
-                room.getId(), RoomReservationStatus.CONFIRMED, today, today.plusDays(1)) < room.getTotalRooms());
+                room.getId(), java.util.EnumSet.of(RoomReservationStatus.CONFIRMED), today, today.plusDays(1), 0L) < room.getTotalRooms());
     }
 
     private Accommodation getEntity(Long id) {
@@ -335,6 +335,11 @@ public class AccommodationServiceImpl implements AccommodationService {
     }
 
     private void applyDetails(Accommodation accommodation, AccommodationRequestDto request) {
+        if ((request.getLatitude() == null) != (request.getLongitude() == null)) {
+            throw new BadRequestException("Latitude and longitude must be provided together");
+        }
+        accommodation.setLatitude(request.getLatitude());
+        accommodation.setLongitude(request.getLongitude());
         accommodation.setAddress(request.getAddress() == null || request.getAddress().isBlank()
                 ? null : request.getAddress().trim());
         accommodation.setFacilities(copyOrEmpty(request.getFacilities()));
@@ -367,6 +372,8 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .province(destination.resolveProvince())
                 .district(destination.getDistrict())
                 .status(destination.getStatus())
+                .latitude(destination.getLatitude())
+                .longitude(destination.getLongitude())
                 .build();
     }
 
@@ -395,6 +402,8 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .location(toDestinationSummary(accommodation.getLocation()))
                 .starRating(accommodation.getStarRating())
                 .address(accommodation.getAddress())
+                .latitude(accommodation.getLatitude())
+                .longitude(accommodation.getLongitude())
                 .facilities(accommodation.getFacilities() == null ? List.of() : List.copyOf(accommodation.getFacilities()))
                 .policies(accommodation.getPolicies())
                 .imageUrls(accommodation.getImageUrls() == null ? List.of() : List.copyOf(accommodation.getImageUrls()))

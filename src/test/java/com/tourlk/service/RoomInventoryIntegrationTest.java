@@ -144,7 +144,7 @@ class RoomInventoryIntegrationTest {
         stored(RoomReservationStatus.CONFIRMED, in, in.plusDays(3), 3);
 
         assertThat(reservationRepository.sumReservedRoomsOverlapping(
-                other.getId(), RoomReservationStatus.CONFIRMED, in, in.plusDays(3))).isZero();
+                other.getId(), java.util.EnumSet.of(RoomReservationStatus.CONFIRMED), in, in.plusDays(3), 0L)).isZero();
     }
 
     // ------------------------------------------------------------------
@@ -155,14 +155,17 @@ class RoomInventoryIntegrationTest {
     void confirm_overlappingDates_cannotExceedTotalRooms() {
         LocalDate in = today.plusDays(10);
         Long first = pending(in, in.plusDays(4), 2).getId();
-        Long second = pending(in.plusDays(2), in.plusDays(6), 2).getId();   // overlaps the first
 
-        reservationService.confirmReservation(first, owner);
-
-        assertThatThrownBy(() -> reservationService.confirmReservation(second, owner))
+        // The unpaid PENDING first reservation already holds 2 of the 3 rooms, so a second overlapping
+        // request for 2 is rejected up front.
+        assertThatThrownBy(() -> reservationService.createReservation(
+                new RoomReservationRequestDto(room.getId(), in.plusDays(2), in.plusDays(6), 2), tourist))
                 .isInstanceOf(RoomUnavailableException.class);
-        assertThat(reservationRepository.findById(second).orElseThrow().getStatus())
-                .isEqualTo(RoomReservationStatus.PENDING);
+
+        // Confirming the held reservation must not clash with itself.
+        reservationService.confirmReservation(first, owner);
+        assertThat(reservationRepository.findById(first).orElseThrow().getStatus())
+                .isEqualTo(RoomReservationStatus.CONFIRMED);
     }
 
     @Test
@@ -181,13 +184,14 @@ class RoomInventoryIntegrationTest {
     void cancelConfirmedReservation_releasesInventoryForAnotherGuest() {
         LocalDate in = today.plusDays(10);
         Long first = pending(in, in.plusDays(3), 3).getId();
-        Long second = pending(in, in.plusDays(3), 1).getId();
         reservationService.confirmReservation(first, owner);
+        RoomReservationRequestDto another = new RoomReservationRequestDto(room.getId(), in, in.plusDays(3), 1);
 
-        assertThatThrownBy(() -> reservationService.confirmReservation(second, owner))
+        assertThatThrownBy(() -> reservationService.createReservation(another, tourist))
                 .isInstanceOf(RoomUnavailableException.class);
 
         reservationService.cancelReservation(first, tourist);
+        Long second = reservationService.createReservation(another, tourist).getId();
         reservationService.confirmReservation(second, owner);
 
         assertThat(sum(in, in.plusDays(3))).isEqualTo(1);
@@ -242,12 +246,13 @@ class RoomInventoryIntegrationTest {
     // ------------------------------------------------------------------
 
     @Test
-    void concurrentConfirmations_ofOverlappingReservations_neverOverbookTheRoomType() throws Exception {
+    void concurrentReservations_ofOverlappingDates_neverOverbookTheRoomType() throws Exception {
         int attempts = 8;                                  // 8 guests race for 3 rooms
         List<Long> ids = new ArrayList<>();
         for (int i = 0; i < attempts; i++) {
-            ids.add(pending(today, today.plusDays(2), 1).getId());
+            ids.add((long) i);
         }
+        List<Long> created = java.util.Collections.synchronizedList(new ArrayList<>());
 
         ExecutorService pool = Executors.newFixedThreadPool(attempts);
         CountDownLatch start = new CountDownLatch(1);
@@ -259,7 +264,9 @@ class RoomInventoryIntegrationTest {
                 Callable<Void> task = () -> {
                     start.await();
                     try {
-                        reservationService.confirmReservation(id, owner);
+                        created.add(reservationService.createReservation(
+                                new RoomReservationRequestDto(room.getId(), today, today.plusDays(2), 1), tourist)
+                                .getId());
                         confirmed.incrementAndGet();
                     } catch (RoomUnavailableException e) {
                         rejected.incrementAndGet();
@@ -278,6 +285,7 @@ class RoomInventoryIntegrationTest {
 
         assertThat(confirmed.get()).isEqualTo(3);
         assertThat(rejected.get()).isEqualTo(attempts - 3);
+        created.forEach(id -> reservationService.confirmReservation(id, owner));   // holds confirm without clashing
         assertThat(sum(today, today.plusDays(2))).isEqualTo(3);
         assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
     }
@@ -331,7 +339,7 @@ class RoomInventoryIntegrationTest {
 
     private int sum(LocalDate in, LocalDate out) {
         return reservationRepository.sumReservedRoomsOverlapping(
-                room.getId(), RoomReservationStatus.CONFIRMED, in, out);
+                room.getId(), java.util.EnumSet.of(RoomReservationStatus.CONFIRMED), in, out, 0L);
     }
 
     private AccommodationStatus statusOfAccommodation() {

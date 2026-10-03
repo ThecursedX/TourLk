@@ -28,6 +28,9 @@ public class VehicleHireResponseDto {
     private String notes;
     private BigDecimal totalPrice;
     private VehicleHireStatus status;
+    /** Set when this is an add-on of a package booking — the booking pays for it. */
+    private Long bookingId;
+    private String packageTitle;
     private LocalDateTime createdAt;
 
 }
