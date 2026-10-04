@@ -5,6 +5,8 @@ const STATUS_CLASSES: Record<PaymentStatus, string> = {
   SUCCEEDED: 'bg-green-100 text-green-800',
   FAILED: 'bg-red-100 text-red-700',
   REFUNDED: 'bg-slate-200 text-slate-700',
+  REFUND_PENDING: 'bg-orange-100 text-orange-800',
+  CANCELLED: 'bg-slate-200 text-slate-700',
 }
 
 const STATUS_LABELS: Record<PaymentStatus, string> = {
@@ -12,6 +14,8 @@ const STATUS_LABELS: Record<PaymentStatus, string> = {
   SUCCEEDED: 'Succeeded',
   FAILED: 'Failed',
   REFUNDED: 'Refunded',
+  REFUND_PENDING: 'Refund pending',
+  CANCELLED: 'Cancelled',
 }
 
 interface PaymentStatusBadgeProps {

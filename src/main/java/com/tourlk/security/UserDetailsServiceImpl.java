@@ -1,6 +1,7 @@
 package com.tourlk.security;
 
 import com.tourlk.entity.User;
+import com.tourlk.enums.UserStatus;
 import com.tourlk.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -30,6 +31,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         return org.springframework.security.core.userdetails.User.builder()
                 .username(user.getEmail())
                 .password(user.getPassword())
+                // Deactivated/suspended accounts can neither log in nor use an existing token.
+                .disabled(user.getStatus() != UserStatus.ACTIVE)
                 .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
                 .build();
     }

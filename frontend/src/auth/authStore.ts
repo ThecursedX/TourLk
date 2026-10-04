@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { loginRequest, registerRequest } from '../api/authApi'
-import type { LoginRequestDto, RegisterRequestDto, User } from '../types/auth'
+import type { AuthResponseDto, LoginRequestDto, RegisterRequestDto, User } from '../types/auth'
 
 interface AuthState {
   user: User | null
@@ -9,6 +9,7 @@ interface AuthState {
   isAuthenticated: boolean
   login: (credentials: LoginRequestDto) => Promise<void>
   register: (data: RegisterRequestDto) => Promise<void>
+  setSession: (res: AuthResponseDto) => void
   logout: () => void
 }
 
@@ -30,6 +31,14 @@ export const useAuthStore = create<AuthState>()(
 
       register: async (data) => {
         const res = await registerRequest(data)
+        set({
+          user: { userId: res.userId, name: res.name, email: res.email, role: res.role },
+          token: res.token,
+          isAuthenticated: true,
+        })
+      },
+
+      setSession: (res) => {
         set({
           user: { userId: res.userId, name: res.name, email: res.email, role: res.role },
           token: res.token,

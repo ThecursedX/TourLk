@@ -23,6 +23,12 @@ public class AccommodationResponseDto {
     /** Nested so the frontend still gets a displayable location name + id. */
     private DestinationResponseDto location;
     private Integer starRating;
+    private String address;
+    private Double latitude;
+    private Double longitude;
+    private List<String> facilities;
+    private String policies;
+    private List<String> imageUrls;
     private AccommodationStatus status;
     private Long ownerId;
     private String ownerName;

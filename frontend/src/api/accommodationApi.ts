@@ -45,6 +45,16 @@ export function reactivateAccommodation(id: number) {
   return axiosClient.put<AccommodationResponseDto>(`/accommodations/${id}/reactivate`).then((res) => res.data)
 }
 
+export function markAccommodationTemporarilyUnavailable(id: number) {
+  return axiosClient
+    .put<AccommodationResponseDto>(`/accommodations/${id}/temporarily-unavailable`)
+    .then((res) => res.data)
+}
+
+export function resumeAccommodation(id: number) {
+  return axiosClient.put<AccommodationResponseDto>(`/accommodations/${id}/resume`).then((res) => res.data)
+}
+
 export function archiveAccommodation(id: number) {
   return axiosClient.delete<AccommodationResponseDto>(`/accommodations/${id}`).then((res) => res.data)
 }

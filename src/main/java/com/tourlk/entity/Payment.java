@@ -68,4 +68,8 @@ public class Payment extends AuditableEntity {
     @Builder.Default
     private PaymentStatus status = PaymentStatus.PENDING;
 
+    /** How much was actually refunded — may be less than {@code amount} under a partial-refund policy. */
+    @Column(name = "refund_amount", precision = 10, scale = 2)
+    private BigDecimal refundAmount;
+
 }

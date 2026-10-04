@@ -1,5 +1,5 @@
 import axiosClient from './axiosClient'
-import type { VehicleRequestDto, VehicleResponseDto, VehicleType } from '../types/vehicle'
+import type { BookedDateRange, VehicleRequestDto, VehicleResponseDto, VehicleType } from '../types/vehicle'
 
 export function browseVehicles(vehicleType?: VehicleType, minSeatingCapacity?: number) {
   return axiosClient
@@ -27,6 +27,14 @@ export function updateVehicle(id: number, data: VehicleRequestDto) {
   return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}`, data).then((res) => res.data)
 }
 
+export function submitVehicleForVerification(id: number) {
+  return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/submit`).then((res) => res.data)
+}
+
+export function startVehicleMaintenance(id: number) {
+  return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/maintenance`).then((res) => res.data)
+}
+
 export function approveVehicle(id: number) {
   return axiosClient.put<VehicleResponseDto>(`/vehicles/${id}/approve`).then((res) => res.data)
 }
@@ -45,4 +53,8 @@ export function reactivateVehicle(id: number) {
 
 export function archiveVehicle(id: number) {
   return axiosClient.delete<VehicleResponseDto>(`/vehicles/${id}`).then((res) => res.data)
+}
+
+export function getBookedDates(id: number) {
+  return axiosClient.get<BookedDateRange[]>(`/vehicles/${id}/booked-dates`).then((res) => res.data)
 }

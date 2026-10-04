@@ -1,16 +1,27 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.PackageSearchCriteria;
+import com.tourlk.dto.RejectPackageRequestDto;
 import com.tourlk.dto.TourPackageRequestDto;
+import com.tourlk.dto.AddOnAvailabilityDto;
+import com.tourlk.dto.PackageAddOnResponseDto;
+import com.tourlk.dto.PackageAddOnsRequestDto;
 import com.tourlk.dto.TourPackageResponseDto;
 import com.tourlk.entity.User;
+import com.tourlk.enums.BudgetTier;
+import com.tourlk.enums.PackageSort;
+import com.tourlk.enums.PackageStatus;
+import com.tourlk.service.PackageAddOnService;
 import com.tourlk.service.TourPackageService;
 import com.tourlk.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -38,6 +50,7 @@ public class TourPackageController {
 
     private final TourPackageService tourPackageService;
     private final UserService userService;
+    private final PackageAddOnService packageAddOnService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
@@ -51,8 +64,10 @@ public class TourPackageController {
     @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
     public ResponseEntity<TourPackageResponseDto> update(@PathVariable Long id,
                                                            @Valid @RequestBody TourPackageRequestDto request,
+                                                           @RequestParam(defaultValue = "false") boolean confirmChanges,
                                                            Authentication authentication) {
-        return ResponseEntity.ok(tourPackageService.updatePackage(id, request, currentUser(authentication)));
+        return ResponseEntity.ok(
+                tourPackageService.updatePackage(id, request, currentUser(authentication), confirmChanges));
     }
 
     @PutMapping("/{id}/submit")
@@ -69,8 +84,9 @@ public class TourPackageController {
 
     @PutMapping("/{id}/reject")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TourPackageResponseDto> reject(@PathVariable Long id) {
-        return ResponseEntity.ok(tourPackageService.rejectPackage(id));
+    public ResponseEntity<TourPackageResponseDto> reject(@PathVariable Long id,
+                                                           @Valid @RequestBody RejectPackageRequestDto request) {
+        return ResponseEntity.ok(tourPackageService.rejectPackage(id, request.getReason()));
     }
 
     @PutMapping("/{id}/deactivate")
@@ -91,21 +107,73 @@ public class TourPackageController {
         return ResponseEntity.ok(tourPackageService.archivePackage(id, currentUser(authentication)));
     }
 
+    /**
+     * Public browse of ACTIVE packages. Every parameter is optional:
+     * {@code q} matches title/description, {@code budgetTier} is
+     * BUDGET/STANDARD/LUXURY by price per day, {@code travelDate} keeps
+     * packages departing on/after it (packages without departures always
+     * match), and {@code sort} is one of price_asc, price_desc, duration,
+     * rating, newest.
+     */
     @GetMapping
     public ResponseEntity<List<TourPackageResponseDto>> browse(
             @RequestParam(required = false) Long destinationId,
             @RequestParam(required = false) BigDecimal minPrice,
-            @RequestParam(required = false) BigDecimal maxPrice) {
-        boolean hasFilters = destinationId != null || minPrice != null || maxPrice != null;
-        List<TourPackageResponseDto> results = hasFilters
-                ? tourPackageService.searchPackages(destinationId, minPrice, maxPrice)
-                : tourPackageService.getAllActivePackages();
-        return ResponseEntity.ok(results);
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer minDays,
+            @RequestParam(required = false) Integer maxDays,
+            @RequestParam(required = false) BudgetTier budgetTier,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate travelDate,
+            @RequestParam(required = false) String sort) {
+        PackageSearchCriteria criteria = PackageSearchCriteria.builder()
+                .destinationId(destinationId)
+                .minPrice(minPrice)
+                .maxPrice(maxPrice)
+                .q(q)
+                .minDays(minDays)
+                .maxDays(maxDays)
+                .budgetTier(budgetTier)
+                .travelDate(travelDate)
+                .sort(PackageSort.fromParam(sort))
+                .build();
+        return ResponseEntity.ok(tourPackageService.browsePackages(criteria));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TourPackageResponseDto> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(tourPackageService.getPackageById(id));
+    public ResponseEntity<TourPackageResponseDto> getById(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(tourPackageService.getPackageById(id, optionalCurrentUser(authentication)));
+    }
+
+    @GetMapping("/{id}/add-ons")
+    public ResponseEntity<List<PackageAddOnResponseDto>> getAddOns(@PathVariable Long id,
+                                                                    Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.getAddOns(id, optionalCurrentUser(authentication)));
+    }
+
+    @GetMapping("/{id}/add-ons/availability")
+    public ResponseEntity<List<AddOnAvailabilityDto>> addOnAvailability(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate travelDate,
+            Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.getAvailability(id, travelDate,
+                optionalCurrentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/add-ons")
+    @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
+    public ResponseEntity<List<PackageAddOnResponseDto>> replaceAddOns(
+            @PathVariable Long id, @Valid @RequestBody PackageAddOnsRequestDto request,
+            Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.replaceAddOns(id, request.getAddOns(),
+                currentUser(authentication)));
+    }
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<TourPackageResponseDto>> adminList(
+            @RequestParam(required = false) PackageStatus status) {
+        return ResponseEntity.ok(tourPackageService.getAllPackagesForAdmin(status));
     }
 
     @GetMapping("/pending-approval")
@@ -123,6 +191,15 @@ public class TourPackageController {
 
     private User currentUser(Authentication authentication) {
         return userService.getByEmail(authentication.getName());
+    }
+
+    /** Null for anonymous callers of public endpoints. */
+    private User optionalCurrentUser(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
+            return null;
+        }
+        return currentUser(authentication);
     }
 
 }

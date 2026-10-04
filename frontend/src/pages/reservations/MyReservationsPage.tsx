@@ -36,8 +36,12 @@ export default function MyReservationsPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (reservationId: number) =>
-    reviews.some((r) => r.reviewableType === 'ACCOMMODATION' && r.sourceBookingId === reservationId)
+  const hasReview = (reservationId: number, accommodationId: number) =>
+    reviews.some(
+      (r) =>
+        r.reviewableType === 'ACCOMMODATION' &&
+        (r.sourceBookingId === reservationId || r.reviewableId === accommodationId),
+    )
 
   const handleCancel = async (id: number) => {
     setActionError(null)
@@ -74,13 +78,16 @@ export default function MyReservationsPage() {
             reservation={reservation}
             footer={
               <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
-                  {reservation.status === 'PENDING' && (
+                {reservation.bookingId && (
+                  <p className="text-xs text-slate-500">Paid and managed with your package booking.</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {reservation.status === 'PENDING' && !reservation.bookingId && (
                     <Link to={`/checkout/reservation/${reservation.id}`}>
                       <Button disabled={busyId === reservation.id}>Pay Now</Button>
                     </Link>
                   )}
-                  {CANCELLABLE.has(reservation.status) && (
+                  {CANCELLABLE.has(reservation.status) && !reservation.bookingId && (
                     <Button
                       variant="secondary"
                       disabled={busyId === reservation.id}
@@ -90,7 +97,7 @@ export default function MyReservationsPage() {
                     </Button>
                   )}
                   {reservation.status === 'COMPLETED' &&
-                    !hasReview(reservation.id) &&
+                    !hasReview(reservation.id, reservation.room.accommodationId) &&
                     reviewingId !== reservation.id && (
                       <Button
                         variant="secondary"

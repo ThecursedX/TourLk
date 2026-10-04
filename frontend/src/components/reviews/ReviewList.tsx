@@ -1,15 +1,22 @@
 import { useEffect, useState } from 'react'
 import { getRatingSummary, getReviewsFor } from '../../api/reviewApi'
 import type { RatingSummaryDto, ReviewResponseDto, ReviewableType } from '../../types/review'
+import GuideReplyForm from './GuideReplyForm'
 import ReviewCard from './ReviewCard'
 import StarRating from './StarRating'
 
 interface ReviewListProps {
   reviewableType: ReviewableType
   reviewableId: number
+  /**
+   * Only meaningful for TOUR_PACKAGE reviews: pass true when the current
+   * user is the guide who owns this package (or an admin), to unlock the
+   * reply composer on each review.
+   */
+  canReply?: boolean
 }
 
-export default function ReviewList({ reviewableType, reviewableId }: ReviewListProps) {
+export default function ReviewList({ reviewableType, reviewableId, canReply = false }: ReviewListProps) {
   const [reviews, setReviews] = useState<ReviewResponseDto[]>([])
   const [summary, setSummary] = useState<RatingSummaryDto | null>(null)
   const [loading, setLoading] = useState(true)
@@ -26,6 +33,10 @@ export default function ReviewList({ reviewableType, reviewableId }: ReviewListP
       .catch(() => setError('Could not load reviews. Please try again later.'))
       .finally(() => setLoading(false))
   }, [reviewableType, reviewableId])
+
+  const handleReplyUpdated = (updated: ReviewResponseDto) => {
+    setReviews((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -49,7 +60,15 @@ export default function ReviewList({ reviewableType, reviewableId }: ReviewListP
 
       <div className="flex flex-col gap-3">
         {reviews.map((review) => (
-          <ReviewCard key={review.id} review={review} />
+          <ReviewCard
+            key={review.id}
+            review={review}
+            footer={
+              canReply && reviewableType === 'TOUR_PACKAGE' ? (
+                <GuideReplyForm review={review} onUpdated={handleReplyUpdated} />
+              ) : undefined
+            }
+          />
         ))}
       </div>
     </div>

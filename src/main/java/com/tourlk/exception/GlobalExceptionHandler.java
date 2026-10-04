@@ -5,12 +5,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -25,8 +28,9 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex,
+    // BindException also covers @Valid @ModelAttribute (multipart form) failures; MethodArgumentNotValidException extends it.
+    @ExceptionHandler({MethodArgumentNotValidException.class, org.springframework.validation.BindException.class})
+    public ResponseEntity<ErrorResponse> handleValidation(org.springframework.validation.BindException ex,
                                                            HttpServletRequest request) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
@@ -43,6 +47,12 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "Each attached file must be 5 MB or smaller", request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -67,6 +77,31 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCapacityExceeded(CapacityExceededException ex,
                                                                   HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(DepartureHasBookingsException.class)
+    public ResponseEntity<ErrorResponse> handleDepartureHasBookings(DepartureHasBookingsException ex,
+                                                                      HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ChangesRequireConfirmationException.class)
+    public ResponseEntity<ErrorResponse> handleChangesRequireConfirmation(ChangesRequireConfirmationException ex,
+                                                                           HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("changedFields", ex.getChangedFields());
+        details.put("affectedBookings", ex.getAffectedBookings());
+
+        ErrorResponse body = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.CONFLICT.value())
+                .error(HttpStatus.CONFLICT.getReasonPhrase())
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .code(ChangesRequireConfirmationException.CODE)
+                .details(details)
+                .build();
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(RoomUnavailableException.class)
@@ -130,6 +165,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(LicenceNotVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleLicenceNotVerified(LicenceNotVerifiedException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(TicketClosedException.class)
     public ResponseEntity<ErrorResponse> handleTicketClosed(TicketClosedException ex,
                                                                HttpServletRequest request) {
@@ -154,6 +195,27 @@ public class GlobalExceptionHandler {
         log.warn("Pessimistic lock could not be acquired at {}", request.getRequestURI());
         return build(HttpStatus.CONFLICT,
                 "This resource is busy processing another request. Please try again.", request);
+    }
+
+    @ExceptionHandler(DisabledException.class)
+    public ResponseEntity<ErrorResponse> handleDisabledAccount(DisabledException ex,
+                                                                 HttpServletRequest request) {
+        return build(HttpStatus.FORBIDDEN,
+                "This account has been deactivated. Please contact support.", request);
+    }
+
+    /** Unparseable JSON, or a value that isn't a valid enum constant (e.g. an unknown province). */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex,
+                                                                HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "The request body is missing or contains an invalid value", request);
+    }
+
+    /** A query/path parameter of the wrong type, e.g. {@code ?province=nowhere}. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleParamTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                                   HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'", request);
     }
 
     @ExceptionHandler(BadCredentialsException.class)

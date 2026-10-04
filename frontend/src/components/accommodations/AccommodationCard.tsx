@@ -15,13 +15,24 @@ export default function AccommodationCard({ accommodation, footer }: Accommodati
     : null
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3" attention={accommodation.status === 'PENDING_APPROVAL'}>
+      {accommodation.imageUrls?.[0] && (
+        <img
+          src={accommodation.imageUrls[0]}
+          alt=""
+          className="h-36 w-full rounded-lg border border-slate-200 object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none'
+          }}
+        />
+      )}
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">{accommodation.name}</h3>
         <AccommodationStatusBadge status={accommodation.status} />
       </div>
       <p className="text-sm text-slate-600">
         {accommodation.location.name}
+        {accommodation.address && <span className="text-slate-400"> · {accommodation.address}</span>}
         {accommodation.starRating && (
           <span className="text-slate-400"> · {accommodation.starRating}★</span>
         )}
@@ -38,7 +49,7 @@ export default function AccommodationCard({ accommodation, footer }: Accommodati
           </span>
         )}
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link
           to={`/accommodations/${accommodation.id}`}
           className="text-sm font-medium text-blue-600 hover:underline"

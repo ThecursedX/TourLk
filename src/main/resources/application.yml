@@ -8,8 +8,14 @@ spring:
   datasource:
     url: jdbc:sqlserver://localhost:1433;databaseName=tourlk;encrypt=true;trustServerCertificate=true
     username: ${DB_USERNAME:sa}
-    password: ${DB_PASSWORD:12345678}
+    password: ${DB_PASSWORD:changeme}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  servlet:
+    multipart:
+      # Ticket attachments and licence documents: 5 MB per file; the request cap leaves room for 3 files plus the JSON part.
+      max-file-size: 5MB
+      max-request-size: 17MB
 
   jpa:
     hibernate:
@@ -47,6 +53,42 @@ app:
     # Must be a Base64-encoded key of sufficient length (>= 256 bits) for HS256.
     secret: ${JWT_SECRET:c2VjcmV0LXBsYWNlaG9sZGVyLWNoYW5nZS1tZS1pbi1sb2NhbC1jb25maWctMjU2Yml0c30=}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24h
+  mail:
+    # Email is optional — off by default, no real SMTP server required to
+    # run the app. In-app notifications (NotificationService) always fire
+    # regardless of this setting; set APP_MAIL_ENABLED=true (and real SMTP
+    # creds above) to also send email for the same events.
+    enabled: ${APP_MAIL_ENABLED:false}
+  holds:
+    # Unpaid PENDING vehicle hires / room reservations with no payment in progress are
+    # cancelled after this long so an abandoned booking does not block the dates forever.
+    expiry-minutes: ${APP_HOLD_EXPIRY_MINUTES:30}
+    cleanup-cron: ${APP_HOLD_CLEANUP_CRON:0 */5 * * * *}
+  uploads:
+    # Where ticket attachments are stored on disk (relative to the working directory).
+    ticket-dir: ${APP_TICKET_UPLOAD_DIR:uploads/tickets}
+    # Where licence documents are stored on disk (<userId>/<uuid>.<ext>).
+    licence-dir: ${APP_LICENCE_UPLOAD_DIR:uploads/licences}
+  frontend:
+    # Used to build links that get emailed/logged (e.g. the password reset link).
+    base-url: ${FRONTEND_BASE_URL:http://localhost:5173}
+  password-reset:
+    token-expiry-minutes: ${PASSWORD_RESET_TOKEN_EXPIRY_MINUTES:30}
+  packages:
+    # Price-per-day (USD) bands for GET /api/packages?budgetTier=... and the
+    # budgetTier on package responses: < standard = BUDGET,
+    # < luxury = STANDARD, otherwise LUXURY.
+    budget-tiers:
+      standard-min-per-day: 75
+      luxury-min-per-day: 200
+  cancellation:
+    # Refund tiers for cancelling a booking, by days between "now" and its
+    # travelDate: full-refund-min-days+ gives a full refund,
+    # partial-refund-min-days..(full-refund-min-days - 1) gives
+    # partial-refund-percent%, closer than that gives 0%.
+    full-refund-min-days: 7
+    partial-refund-min-days: 3
+    partial-refund-percent: 50
 
 stripe:
   # Test-mode keys from dashboard.stripe.com — see frontend/README.md (Payments section)

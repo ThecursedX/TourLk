@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.validation.Valid;
 
+import java.util.List;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -98,6 +100,20 @@ class GlobalExceptionHandlerTest {
         @Test
         void capacityExceeded_maps409() throws Exception {
             mvc.perform(get("/err/capacity")).andExpect(status().isConflict());
+        }
+
+        @Test
+        void changesRequireConfirmation_maps409WithCodeAndDetails() throws Exception {
+            mvc.perform(get("/err/confirm-changes"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("CONFIRMATION_REQUIRED"))
+                    .andExpect(jsonPath("$.details.changedFields[0]").value("price"))
+                    .andExpect(jsonPath("$.details.affectedBookings").value(3));
+        }
+
+        @Test
+        void departureHasBookings_maps409() throws Exception {
+            mvc.perform(get("/err/departure-has-bookings")).andExpect(status().isConflict());
         }
 
         @Test
@@ -208,6 +224,8 @@ class GlobalExceptionHandlerTest {
                 case "invalid-status" -> throw new InvalidStatusTransitionException("boom");
                 case "capacity" -> throw new CapacityExceededException("boom");
                 case "room-unavailable" -> throw new RoomUnavailableException("boom");
+                case "departure-has-bookings" -> throw new DepartureHasBookingsException("boom");
+                case "confirm-changes" -> throw new ChangesRequireConfirmationException(List.of("price"), 3);
                 case "vehicle-unavailable" -> throw new VehicleUnavailableException("boom");
                 case "invalid-date" -> throw new InvalidDateRangeException("boom");
                 case "amount-mismatch" -> throw new PaymentAmountMismatchException("boom");

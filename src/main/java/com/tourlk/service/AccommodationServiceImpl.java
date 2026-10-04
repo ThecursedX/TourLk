@@ -10,6 +10,8 @@ import com.tourlk.entity.Destination;
 import com.tourlk.entity.Room;
 import com.tourlk.entity.User;
 import com.tourlk.enums.AccommodationStatus;
+import com.tourlk.enums.NotificationType;
+import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
@@ -20,17 +22,30 @@ import com.tourlk.repo.RoomReservationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class AccommodationServiceImpl implements AccommodationService {
 
+    /** Statuses shown in public browsing — TEMPORARILY_UNAVAILABLE stays visible, just not bookable. */
+    private static final Set<AccommodationStatus> BROWSABLE = EnumSet.of(
+            AccommodationStatus.ACTIVE, AccommodationStatus.FULLY_BOOKED, AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+
+    /** Statuses of a live listing (approved, not deactivated/archived). */
+    private static final Set<AccommodationStatus> LIVE = BROWSABLE;
+
     private final AccommodationRepository accommodationRepository;
     private final RoomRepository roomRepository;
     private final RoomReservationRepository roomReservationRepository;
     private final DestinationService destinationService;
+    private final NotificationService notificationService;
 
     @Override
     public AccommodationResponseDto createAccommodation(AccommodationRequestDto request, User currentUser) {
@@ -44,6 +59,7 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .status(AccommodationStatus.DRAFT)
                 .owner(currentUser)
                 .build();
+        applyDetails(accommodation, request);
 
         return toResponse(accommodationRepository.save(accommodation));
     }
@@ -58,6 +74,7 @@ public class AccommodationServiceImpl implements AccommodationService {
         accommodation.setDescription(request.getDescription());
         accommodation.setLocation(destinationService.requireSelectableDestination(request.getLocationId()));
         accommodation.setStarRating(request.getStarRating());
+        applyDetails(accommodation, request);
 
         return toResponse(accommodationRepository.save(accommodation));
     }
@@ -69,7 +86,10 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.DRAFT, "submitted for approval");
 
         accommodation.setStatus(AccommodationStatus.PENDING_APPROVAL);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notifyAdmins(NotificationType.ACCOMMODATION_SUBMITTED, "Accommodation awaiting approval",
+                "\"" + saved.getName() + "\" was submitted for approval", "/admin/accommodations");
+        return toResponse(saved);
     }
 
     @Override
@@ -78,7 +98,10 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.PENDING_APPROVAL, "approved");
 
         accommodation.setStatus(AccommodationStatus.ACTIVE);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notify(saved.getOwner(), NotificationType.ACCOMMODATION_APPROVED, "Accommodation approved",
+                "\"" + saved.getName() + "\" was approved and is now live.", "/accommodations/mine");
+        return toResponse(saved);
     }
 
     @Override
@@ -87,16 +110,48 @@ public class AccommodationServiceImpl implements AccommodationService {
         assertStatus(accommodation, AccommodationStatus.PENDING_APPROVAL, "rejected");
 
         accommodation.setStatus(AccommodationStatus.DRAFT);
-        return toResponse(accommodationRepository.save(accommodation));
+        Accommodation saved = accommodationRepository.save(accommodation);
+        notificationService.notify(saved.getOwner(), NotificationType.ACCOMMODATION_REJECTED, "Accommodation not approved",
+                "\"" + saved.getName() + "\" was not approved. Update the listing and submit it again.",
+                "/accommodations/mine");
+        return toResponse(saved);
     }
 
     @Override
     public AccommodationResponseDto deactivateAccommodation(Long id, User currentUser) {
         Accommodation accommodation = getEntity(id);
         assertCanManage(accommodation, currentUser);
-        assertStatus(accommodation, AccommodationStatus.ACTIVE, "deactivated");
+        assertLive(accommodation, "deactivated");
 
         accommodation.setStatus(AccommodationStatus.INACTIVE);
+        return toResponse(accommodationRepository.save(accommodation));
+    }
+
+    @Override
+    @Transactional
+    public AccommodationResponseDto markTemporarilyUnavailable(Long id, User currentUser) {
+        Accommodation accommodation = getEntity(id);
+        assertCanManage(accommodation, currentUser);
+        if (accommodation.getStatus() != AccommodationStatus.ACTIVE
+                && accommodation.getStatus() != AccommodationStatus.FULLY_BOOKED) {
+            throw new InvalidStatusTransitionException(
+                    "Only ACTIVE or FULLY_BOOKED accommodations can be made temporarily unavailable, but this "
+                            + "accommodation is " + accommodation.getStatus());
+        }
+
+        accommodation.setStatus(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+        return toResponse(accommodationRepository.save(accommodation));
+    }
+
+    @Override
+    @Transactional
+    public AccommodationResponseDto resumeAvailability(Long id, User currentUser) {
+        Accommodation accommodation = getEntity(id);
+        assertCanManage(accommodation, currentUser);
+        assertStatus(accommodation, AccommodationStatus.TEMPORARILY_UNAVAILABLE, "resumed");
+
+        accommodation.setStatus(isFullyBookedToday(accommodation.getId())
+                ? AccommodationStatus.FULLY_BOOKED : AccommodationStatus.ACTIVE);
         return toResponse(accommodationRepository.save(accommodation));
     }
 
@@ -130,7 +185,7 @@ public class AccommodationServiceImpl implements AccommodationService {
 
     @Override
     public List<AccommodationResponseDto> getAllActive(Long locationId) {
-        return accommodationRepository.search(AccommodationStatus.ACTIVE, locationId).stream()
+        return accommodationRepository.search(BROWSABLE, locationId).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -161,6 +216,8 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .pricePerNight(request.getPricePerNight())
                 .totalRooms(request.getTotalRooms())
                 .maxOccupancy(request.getMaxOccupancy())
+                .facilities(copyOrEmpty(request.getFacilities()))
+                .imageUrls(copyOrEmpty(request.getImageUrls()))
                 .build();
 
         return toRoomResponse(roomRepository.save(room));
@@ -176,6 +233,8 @@ public class AccommodationServiceImpl implements AccommodationService {
         room.setPricePerNight(request.getPricePerNight());
         room.setTotalRooms(request.getTotalRooms());
         room.setMaxOccupancy(request.getMaxOccupancy());
+        room.setFacilities(copyOrEmpty(request.getFacilities()));
+        room.setImageUrls(copyOrEmpty(request.getImageUrls()));
 
         return toRoomResponse(roomRepository.save(room));
     }
@@ -192,6 +251,52 @@ public class AccommodationServiceImpl implements AccommodationService {
         }
 
         roomRepository.delete(room);
+    }
+
+    @Override
+    @Transactional
+    public void refreshAvailabilityStatus(Long accommodationId) {
+        Accommodation accommodation = getEntity(accommodationId);
+        syncAvailability(accommodation);
+    }
+
+    @Override
+    @Transactional
+    public void refreshAllAvailabilityStatuses() {
+        List<Accommodation> candidates = new ArrayList<>(accommodationRepository.findByStatus(AccommodationStatus.ACTIVE));
+        candidates.addAll(accommodationRepository.findByStatus(AccommodationStatus.FULLY_BOOKED));
+        candidates.forEach(this::syncAvailability);
+    }
+
+    /** ACTIVE <-> FULLY_BOOKED only; every other status (incl. TEMPORARILY_UNAVAILABLE) is left alone. */
+    private void syncAvailability(Accommodation accommodation) {
+        AccommodationStatus current = accommodation.getStatus();
+        if (current != AccommodationStatus.ACTIVE && current != AccommodationStatus.FULLY_BOOKED) {
+            return;
+        }
+
+        AccommodationStatus target = isFullyBookedToday(accommodation.getId())
+                ? AccommodationStatus.FULLY_BOOKED : AccommodationStatus.ACTIVE;
+        if (target != current) {
+            accommodation.setStatus(target);
+            accommodationRepository.save(accommodation);
+        }
+    }
+
+    /**
+     * True when the property has room types and none has a free unit tonight
+     * (confirmed reservations overlapping [today, today + 1) use up all
+     * {@code totalRooms}). A property with no room types is never "fully booked".
+     */
+    private boolean isFullyBookedToday(Long accommodationId) {
+        List<Room> rooms = roomRepository.findByAccommodationId(accommodationId);
+        if (rooms.isEmpty()) {
+            return false;
+        }
+
+        LocalDate today = LocalDate.now();
+        return rooms.stream().noneMatch(room -> roomReservationRepository.sumReservedRoomsOverlapping(
+                room.getId(), java.util.EnumSet.of(RoomReservationStatus.CONFIRMED), today, today.plusDays(1), 0L) < room.getTotalRooms());
     }
 
     private Accommodation getEntity(Long id) {
@@ -214,12 +319,37 @@ public class AccommodationServiceImpl implements AccommodationService {
     }
 
     private void assertEditable(Accommodation accommodation) {
-        if (accommodation.getStatus() != AccommodationStatus.DRAFT
-                && accommodation.getStatus() != AccommodationStatus.ACTIVE) {
+        if (accommodation.getStatus() != AccommodationStatus.DRAFT && !LIVE.contains(accommodation.getStatus())) {
             throw new InvalidStatusTransitionException(
-                    "An accommodation (and its rooms) can only be edited while it is DRAFT or ACTIVE, not "
-                            + accommodation.getStatus());
+                    "An accommodation (and its rooms) can only be edited while it is DRAFT or live (ACTIVE, "
+                            + "FULLY_BOOKED, TEMPORARILY_UNAVAILABLE), not " + accommodation.getStatus());
         }
+    }
+
+    private void assertLive(Accommodation accommodation, String action) {
+        if (!LIVE.contains(accommodation.getStatus())) {
+            throw new InvalidStatusTransitionException(
+                    "Only live (ACTIVE, FULLY_BOOKED, TEMPORARILY_UNAVAILABLE) accommodations can be " + action
+                            + ", but this accommodation is " + accommodation.getStatus());
+        }
+    }
+
+    private void applyDetails(Accommodation accommodation, AccommodationRequestDto request) {
+        if ((request.getLatitude() == null) != (request.getLongitude() == null)) {
+            throw new BadRequestException("Latitude and longitude must be provided together");
+        }
+        accommodation.setLatitude(request.getLatitude());
+        accommodation.setLongitude(request.getLongitude());
+        accommodation.setAddress(request.getAddress() == null || request.getAddress().isBlank()
+                ? null : request.getAddress().trim());
+        accommodation.setFacilities(copyOrEmpty(request.getFacilities()));
+        accommodation.setPolicies(request.getPolicies() == null || request.getPolicies().isBlank()
+                ? null : request.getPolicies());
+        accommodation.setImageUrls(copyOrEmpty(request.getImageUrls()));
+    }
+
+    private List<String> copyOrEmpty(List<String> values) {
+        return values == null ? new ArrayList<>() : new ArrayList<>(values);
     }
 
     private void assertStatus(Accommodation accommodation, AccommodationStatus required, String action) {
@@ -238,8 +368,12 @@ public class AccommodationServiceImpl implements AccommodationService {
         return DestinationResponseDto.builder()
                 .id(destination.getId())
                 .name(destination.getName())
-                .region(destination.getRegion())
+                .region(destination.resolveRegion())
+                .province(destination.resolveProvince())
+                .district(destination.getDistrict())
                 .status(destination.getStatus())
+                .latitude(destination.getLatitude())
+                .longitude(destination.getLongitude())
                 .build();
     }
 
@@ -251,6 +385,8 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .pricePerNight(room.getPricePerNight())
                 .totalRooms(room.getTotalRooms())
                 .maxOccupancy(room.getMaxOccupancy())
+                .facilities(room.getFacilities() == null ? List.of() : List.copyOf(room.getFacilities()))
+                .imageUrls(room.getImageUrls() == null ? List.of() : List.copyOf(room.getImageUrls()))
                 .build();
     }
 
@@ -265,6 +401,12 @@ public class AccommodationServiceImpl implements AccommodationService {
                 .description(accommodation.getDescription())
                 .location(toDestinationSummary(accommodation.getLocation()))
                 .starRating(accommodation.getStarRating())
+                .address(accommodation.getAddress())
+                .latitude(accommodation.getLatitude())
+                .longitude(accommodation.getLongitude())
+                .facilities(accommodation.getFacilities() == null ? List.of() : List.copyOf(accommodation.getFacilities()))
+                .policies(accommodation.getPolicies())
+                .imageUrls(accommodation.getImageUrls() == null ? List.of() : List.copyOf(accommodation.getImageUrls()))
                 .status(accommodation.getStatus())
                 .ownerId(accommodation.getOwner().getId())
                 .ownerName(accommodation.getOwner().getName())

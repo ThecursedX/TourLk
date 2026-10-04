@@ -47,6 +47,15 @@ export default function MyPaymentsPage() {
                 })}{' '}
                 · {new Date(payment.createdAt).toLocaleDateString()}
               </p>
+              {payment.refundAmount != null && (payment.status === 'REFUNDED' || payment.status === 'REFUND_PENDING') && (
+                <p className="text-sm text-orange-700">
+                  Refund{payment.status === 'REFUND_PENDING' ? ' in progress' : 'ed'}:{' '}
+                  {payment.refundAmount.toLocaleString(undefined, {
+                    style: 'currency',
+                    currency: payment.currency.toUpperCase(),
+                  })}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <PaymentStatusBadge status={payment.status} />

@@ -57,8 +57,12 @@ public class SecurityConfig {
             "/api/accommodations/*",
             "/api/packages",
             "/api/packages/*",
+            "/api/packages/*/departures",
+            "/api/packages/*/add-ons",
+            "/api/packages/*/add-ons/availability",
             "/api/vehicles",
             "/api/vehicles/*",
+            "/api/vehicles/*/booked-dates",
             "/api/reviews",
             "/api/reviews/summary"
     };

@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -23,10 +24,23 @@ public class BookingResponseDto {
     private String touristName;
     private LocalDate travelDate;
     private int numberOfTravelers;
+    /** What the tourist pays: fixed at booking time (legacy rows: live package price * travelers). */
+    private BigDecimal totalPrice;
+    /** totalPrice = packageSubtotal + roomsSubtotal + vehiclesSubtotal. */
+    private BigDecimal packageSubtotal;
+    private BigDecimal roomsSubtotal;
+    private BigDecimal vehiclesSubtotal;
+    /** Hotel rooms / vehicles added to this booking; paid for by it. */
+    private java.util.List<RoomReservationResponseDto> roomReservations;
+    private java.util.List<VehicleHireResponseDto> vehicleHires;
     private String specialRequests;
     private BookingStatus status;
     private LocalDate previousTravelDate;
     private LocalDate requestedTravelDate;
+    /** Set when status is REJECTED. */
+    private String rejectionReason;
+    /** True once a SUCCEEDED payment exists for this booking. */
+    private boolean paid;
     private LocalDateTime createdAt;
 
 }

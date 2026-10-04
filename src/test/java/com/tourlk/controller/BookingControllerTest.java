@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -88,12 +89,20 @@ class BookingControllerTest {
         verifyNoInteractions(bookingService);
     }
 
-    // --- PUT /api/bookings/{id}/confirm : hasRole('ADMIN') ---
+    // --- PUT /api/bookings/{id}/confirm : hasAnyRole('ADMIN','GUIDE') ---
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void confirm_asAdmin_returnsOk() throws Exception {
-        when(bookingService.confirmBooking(5L)).thenReturn(sampleBooking());
+        when(bookingService.confirmBooking(eq(5L), any())).thenReturn(sampleBooking());
+
+        mvc.perform(put("/api/bookings/5/confirm")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "GUIDE")
+    void confirm_asGuide_returnsOk() throws Exception {
+        when(bookingService.confirmBooking(eq(5L), any())).thenReturn(sampleBooking());
 
         mvc.perform(put("/api/bookings/5/confirm")).andExpect(status().isOk());
     }
@@ -149,12 +158,22 @@ class BookingControllerTest {
         mvc.perform(get("/api/bookings/mine")).andExpect(status().isForbidden());
     }
 
-    // --- GET /api/bookings/package/{id} : hasRole('ADMIN') ---
+    // --- GET /api/bookings/package/{id} : hasAnyRole('ADMIN','GUIDE') ---
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(username = "a@example.com", roles = "ADMIN")
     void byPackage_asAdmin_returnsOk() throws Exception {
-        when(bookingService.getBookingsByPackage(9L)).thenReturn(java.util.List.of());
+        stubCurrentUser(Role.ADMIN);
+        when(bookingService.getBookingsByPackage(eq(9L), any())).thenReturn(java.util.List.of());
+
+        mvc.perform(get("/api/bookings/package/9")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "g@example.com", roles = "GUIDE")
+    void byPackage_asGuide_returnsOk() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+        when(bookingService.getBookingsByPackage(eq(9L), any())).thenReturn(java.util.List.of());
 
         mvc.perform(get("/api/bookings/package/9")).andExpect(status().isOk());
     }
@@ -175,5 +194,48 @@ class BookingControllerTest {
         when(bookingService.getBookingById(anyLong(), any())).thenReturn(sampleBooking());
 
         mvc.perform(get("/api/bookings/5")).andExpect(status().isOk());
+    }
+
+    // --- GET /api/bookings/{id}/cancellation-preview : any authenticated user ---
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "TOURIST")
+    void cancellationPreview_anyAuthenticatedUser_returnsOk() throws Exception {
+        stubCurrentUser(Role.TOURIST);
+        when(bookingService.getCancellationPreview(anyLong(), any()))
+                .thenReturn(com.tourlk.dto.CancellationPreviewResponseDto.builder()
+                        .refundPercent(100).refundAmount(java.math.BigDecimal.TEN).ruleText("rule").build());
+
+        mvc.perform(get("/api/bookings/5/cancellation-preview")).andExpect(status().isOk());
+    }
+
+    // --- PUT /api/bookings/{id}/reject : hasAnyRole('ADMIN','GUIDE') ---
+
+    @Test
+    @WithMockUser(username = "g@example.com", roles = "GUIDE")
+    void reject_asGuide_returnsOk() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+        when(bookingService.rejectBooking(anyLong(), any(), any())).thenReturn(sampleBooking());
+
+        mvc.perform(put("/api/bookings/5/reject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No availability\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void reject_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/bookings/5/reject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No availability\"}"))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(bookingService);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void reject_blankReason_isBadRequest() throws Exception {
+        mvc.perform(put("/api/bookings/5/reject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

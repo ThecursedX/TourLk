@@ -11,6 +11,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,12 +22,20 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
 
     List<Vehicle> findByDriverId(Long driverId);
 
-    @Query("SELECT v FROM Vehicle v WHERE v.status = :status "
+    long countByDriverId(Long driverId);
+
+    @Query("SELECT v FROM Vehicle v WHERE v.status IN :statuses "
             + "AND (:vehicleType IS NULL OR v.vehicleType = :vehicleType) "
             + "AND (:minSeatingCapacity IS NULL OR v.seatingCapacity >= :minSeatingCapacity)")
-    List<Vehicle> search(@Param("status") VehicleStatus status,
+    List<Vehicle> search(@Param("statuses") Collection<VehicleStatus> statuses,
                          @Param("vehicleType") VehicleType vehicleType,
                          @Param("minSeatingCapacity") Integer minSeatingCapacity);
+
+    /** Vehicles in the given statuses whose insurance expires on or before {@code date}. */
+    List<Vehicle> findByStatusInAndInsuranceExpiryLessThanEqual(Collection<VehicleStatus> statuses, LocalDate date);
+
+    /** Vehicles in the given statuses whose next maintenance is due on or before {@code date}. */
+    List<Vehicle> findByStatusInAndNextMaintenanceDateLessThanEqual(Collection<VehicleStatus> statuses, LocalDate date);
 
     /**
      * Fetches a vehicle with a pessimistic write lock, held for the rest

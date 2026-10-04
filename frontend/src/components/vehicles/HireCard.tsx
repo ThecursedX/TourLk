@@ -18,6 +18,14 @@ export default function HireCard({ hire, footer }: HireCardProps) {
         </h3>
         <HireStatusBadge status={hire.status} />
       </div>
+      {hire.bookingId && (
+        <Link
+          to={`/bookings/${hire.bookingId}`}
+          className="self-start rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800 hover:underline"
+        >
+          Part of package: {hire.packageTitle}
+        </Link>
+      )}
       <p className="text-sm text-slate-600">
         {hire.vehicle.vehicleType} · {hire.vehicle.registrationNumber}
       </p>
@@ -30,7 +38,7 @@ export default function HireCard({ hire, footer }: HireCardProps) {
         </span>
       </div>
       <p className="text-sm text-slate-500">Pickup: {hire.pickupLocation}</p>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link to={`/vehicles/${hire.vehicle.id}`} className="text-sm font-medium text-blue-600 hover:underline">
           View vehicle
         </Link>

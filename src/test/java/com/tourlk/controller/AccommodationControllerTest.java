@@ -65,6 +65,64 @@ class AccommodationControllerTest {
                 .status(AccommodationStatus.DRAFT).build();
     }
 
+    // --- extended fields / validation ---
+
+    @Test
+    @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
+    void create_withExtendedFields_returnsCreated() throws Exception {
+        stubCurrentUser(Role.HOTEL_PARTNER);
+        when(accommodationService.createAccommodation(any(), any())).thenReturn(sample());
+        String body = """
+                {"name":"Ocean View","description":"Beachfront villa","locationId":1,"starRating":4,
+                 "address":"12 Beach Rd, Galle","facilities":["Pool","WiFi"],
+                 "policies":"Check-in after 2pm","imageUrls":["http://img/1.jpg"]}
+                """;
+
+        mvc.perform(post("/api/accommodations").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
+    void addRoom_withMoreThanTenImages_returnsBadRequest() throws Exception {
+        stubCurrentUser(Role.HOTEL_PARTNER);
+        String urls = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(i -> "\"http://img/" + i + ".jpg\"").collect(java.util.stream.Collectors.joining(","));
+        String body = "{\"roomType\":\"Deluxe\",\"pricePerNight\":80.00,\"totalRooms\":5,"
+                + "\"maxOccupancy\":2,\"imageUrls\":[" + urls + "]}";
+
+        mvc.perform(post("/api/accommodations/30/rooms").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(accommodationService);
+    }
+
+    // --- PUT /api/accommodations/{id}/temporarily-unavailable and /resume : hasAnyRole('ADMIN','HOTEL_PARTNER') ---
+
+    @Test
+    @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
+    void temporarilyUnavailable_asHotelPartner_returnsOk() throws Exception {
+        stubCurrentUser(Role.HOTEL_PARTNER);
+        when(accommodationService.markTemporarilyUnavailable(anyLong(), any())).thenReturn(sample());
+
+        mvc.perform(put("/api/accommodations/30/temporarily-unavailable")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
+    void resume_asHotelPartner_returnsOk() throws Exception {
+        stubCurrentUser(Role.HOTEL_PARTNER);
+        when(accommodationService.resumeAvailability(anyLong(), any())).thenReturn(sample());
+
+        mvc.perform(put("/api/accommodations/30/resume")).andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "TOURIST")
+    void temporarilyUnavailable_asTourist_isForbidden() throws Exception {
+        mvc.perform(put("/api/accommodations/30/temporarily-unavailable")).andExpect(status().isForbidden());
+        verifyNoInteractions(accommodationService);
+    }
+
     // --- POST /api/accommodations : hasAnyRole('ADMIN','HOTEL_PARTNER') ---
 
     @Test

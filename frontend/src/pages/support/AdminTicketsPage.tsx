@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react'
 import { assignTicket, closeTicket, getAllTickets, resolveTicket } from '../../api/supportTicketApi'
 import TicketCard from '../../components/support/TicketCard'
 import Button from '../../components/ui/Button'
-import type { SupportTicketResponseDto, TicketStatus } from '../../types/supportTicket'
+import { ACTIVE_TICKET_STATUSES, type SupportTicketResponseDto, type TicketStatus } from '../../types/supportTicket'
 
 const STATUS_TABS: { label: string; value: TicketStatus | undefined }[] = [
   { label: 'All', value: undefined },
   { label: 'Open', value: 'OPEN' },
   { label: 'In Progress', value: 'IN_PROGRESS' },
+  { label: 'Waiting for user', value: 'WAITING_FOR_USER' },
   { label: 'Resolved', value: 'RESOLVED' },
   { label: 'Closed', value: 'CLOSED' },
+  { label: 'Withdrawn', value: 'WITHDRAWN' },
 ]
 
 export default function AdminTicketsPage() {
@@ -86,7 +88,7 @@ export default function AdminTicketsPage() {
                       Assign to me
                     </Button>
                   )}
-                  {(ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS') && (
+                  {ACTIVE_TICKET_STATUSES.includes(ticket.status) && (
                     <Button disabled={disabled} onClick={() => runAction(ticket.id, resolveTicket)}>
                       Resolve
                     </Button>

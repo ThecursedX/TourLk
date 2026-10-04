@@ -1,5 +1,10 @@
 import axiosClient from './axiosClient'
-import type { BookingRequestDto, BookingResponseDto, RescheduleRequestDto } from '../types/booking'
+import type {
+  BookingRequestDto,
+  BookingResponseDto,
+  CancellationPreviewResponseDto,
+  RescheduleRequestDto,
+} from '../types/booking'
 
 export function createBooking(data: BookingRequestDto) {
   return axiosClient.post<BookingResponseDto>('/bookings', data).then((res) => res.data)
@@ -15,6 +20,11 @@ export function getMyBookings() {
 
 export function getBookingsByPackage(packageId: number) {
   return axiosClient.get<BookingResponseDto[]>(`/bookings/package/${packageId}`).then((res) => res.data)
+}
+
+/** GUIDE: every booking on the packages the current guide created, newest first. */
+export function getMyPackageBookings() {
+  return axiosClient.get<BookingResponseDto[]>('/bookings/my-packages').then((res) => res.data)
 }
 
 export function confirmBooking(id: number) {
@@ -35,6 +45,16 @@ export function rejectReschedule(id: number) {
 
 export function cancelBooking(id: number) {
   return axiosClient.put<BookingResponseDto>(`/bookings/${id}/cancel`).then((res) => res.data)
+}
+
+export function getCancellationPreview(id: number) {
+  return axiosClient
+    .get<CancellationPreviewResponseDto>(`/bookings/${id}/cancellation-preview`)
+    .then((res) => res.data)
+}
+
+export function rejectBooking(id: number, reason: string) {
+  return axiosClient.put<BookingResponseDto>(`/bookings/${id}/reject`, { reason }).then((res) => res.data)
 }
 
 export function completeBooking(id: number) {

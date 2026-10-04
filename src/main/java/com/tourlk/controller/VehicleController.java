@@ -1,10 +1,12 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.BookedDateRangeDto;
 import com.tourlk.dto.VehicleRequestDto;
 import com.tourlk.dto.VehicleResponseDto;
 import com.tourlk.entity.User;
 import com.tourlk.enums.VehicleType;
 import com.tourlk.service.UserService;
+import com.tourlk.service.VehicleHireService;
 import com.tourlk.service.VehicleService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,6 +39,7 @@ public class VehicleController {
 
     private final VehicleService vehicleService;
     private final UserService userService;
+    private final VehicleHireService vehicleHireService;
 
     @PostMapping
     @PreAuthorize("hasRole('DRIVER')")
@@ -52,6 +55,12 @@ public class VehicleController {
                                                      @Valid @RequestBody VehicleRequestDto request,
                                                      Authentication authentication) {
         return ResponseEntity.ok(vehicleService.updateVehicle(id, request, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/submit")
+    @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
+    public ResponseEntity<VehicleResponseDto> submit(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(vehicleService.submitForVerification(id, currentUser(authentication)));
     }
 
     @PutMapping("/{id}/approve")
@@ -70,6 +79,12 @@ public class VehicleController {
     @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
     public ResponseEntity<VehicleResponseDto> deactivate(@PathVariable Long id, Authentication authentication) {
         return ResponseEntity.ok(vehicleService.deactivateVehicle(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/maintenance")
+    @PreAuthorize("hasAnyRole('ADMIN','DRIVER')")
+    public ResponseEntity<VehicleResponseDto> startMaintenance(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(vehicleService.startMaintenance(id, currentUser(authentication)));
     }
 
     @PutMapping("/{id}/reactivate")
@@ -94,6 +109,11 @@ public class VehicleController {
     @GetMapping("/{id}")
     public ResponseEntity<VehicleResponseDto> getById(@PathVariable Long id) {
         return ResponseEntity.ok(vehicleService.getById(id));
+    }
+
+    @GetMapping("/{id}/booked-dates")
+    public ResponseEntity<List<BookedDateRangeDto>> bookedDates(@PathVariable Long id) {
+        return ResponseEntity.ok(vehicleHireService.getBookedDates(id));
     }
 
     @GetMapping("/pending-approval")

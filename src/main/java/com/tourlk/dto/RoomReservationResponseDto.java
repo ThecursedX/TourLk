@@ -25,6 +25,9 @@ public class RoomReservationResponseDto {
     private LocalDate checkOutDate;
     private int numberOfRooms;
     private RoomReservationStatus status;
+    /** Set when this is an add-on of a package booking — the booking pays for it. */
+    private Long bookingId;
+    private String packageTitle;
     private LocalDateTime createdAt;
 
 }

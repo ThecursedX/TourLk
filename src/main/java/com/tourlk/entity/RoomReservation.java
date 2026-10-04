@@ -55,6 +55,11 @@ public class RoomReservation extends AuditableEntity {
     @Column(name = "number_of_rooms", nullable = false)
     private int numberOfRooms;
 
+    /** Set when this was added as an add-on of a package booking; that booking pays for it. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
+    private Booking booking;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

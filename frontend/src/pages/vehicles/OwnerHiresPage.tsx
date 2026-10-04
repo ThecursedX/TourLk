@@ -103,7 +103,12 @@ export default function OwnerHiresPage() {
               hire={hire}
               footer={
                 <div className="flex flex-wrap gap-2">
-                  {hire.status === 'PENDING' && (
+                  {hire.bookingId && (
+                    <p className="text-xs text-slate-500">
+                      Confirmed automatically when the package booking is paid.
+                    </p>
+                  )}
+                  {hire.status === 'PENDING' && !hire.bookingId && (
                     <Button disabled={disabled} onClick={() => runAction(hire.id, confirmHire)}>
                       Confirm
                     </Button>
@@ -113,7 +118,7 @@ export default function OwnerHiresPage() {
                       Complete
                     </Button>
                   )}
-                  {CANCELLABLE.has(hire.status) && (
+                  {CANCELLABLE.has(hire.status) && !hire.bookingId && (
                     <Button variant="secondary" disabled={disabled} onClick={() => runAction(hire.id, cancelHire)}>
                       Cancel
                     </Button>

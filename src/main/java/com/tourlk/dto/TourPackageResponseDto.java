@@ -1,5 +1,6 @@
 package com.tourlk.dto;
 
+import com.tourlk.enums.BudgetTier;
 import com.tourlk.enums.PackageStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,6 +10,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -29,5 +31,30 @@ public class TourPackageResponseDto {
     private Long createdById;
     private String createdByName;
     private LocalDateTime createdAt;
+    /**
+     * Set while a rejected package awaits resubmission (DRAFT). Only owners
+     * and admins can load a non-ACTIVE package, and resubmitting clears it,
+     * so it never reaches the public.
+     */
+    private String rejectionReason;
+
+    private List<ItineraryDayResponseDto> itineraryDays;
+    private List<String> inclusions;
+    private List<String> exclusions;
+    private List<String> imageUrls;
+    /** Optional hotel rooms / vehicles tourists can add when booking. */
+    private List<PackageAddOnResponseDto> addOns;
+
+    /**
+     * True once the package has any departure (past or upcoming). Bookings
+     * must then pick a departure date, even when none are upcoming.
+     */
+    private boolean hasDepartures;
+
+    /** Rounded to one decimal; 0 when reviewCount is 0. Same numbers as GET /api/reviews/summary. */
+    private double averageRating;
+    private long reviewCount;
+    /** From price per day; thresholds in app.packages.budget-tiers. */
+    private BudgetTier budgetTier;
 
 }

@@ -1,6 +1,20 @@
 import type { Role } from './auth'
 
-export type TicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED'
+export type TicketStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_FOR_USER'
+  | 'RESOLVED'
+  | 'CLOSED'
+  | 'WITHDRAWN'
+
+/** Statuses in which a ticket is still being worked on (can be withdrawn or resolved). */
+export const ACTIVE_TICKET_STATUSES: TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_USER']
+
+// Attachment rules, mirroring TicketAttachmentStorage on the server.
+export const MAX_TICKET_FILES = 3
+export const MAX_TICKET_FILE_BYTES = 5 * 1024 * 1024
+export const ALLOWED_TICKET_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
 
 export type TicketPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 
@@ -38,6 +52,14 @@ export interface SupportTicketResponseDto {
   updatedAt: string
 }
 
+// Matches com.tourlk.dto.TicketAttachmentResponseDto
+export interface TicketAttachmentResponseDto {
+  id: number
+  fileName: string
+  contentType: string
+  sizeBytes: number
+}
+
 // Matches com.tourlk.dto.TicketReplyResponseDto
 export interface TicketReplyResponseDto {
   id: number
@@ -45,6 +67,7 @@ export interface TicketReplyResponseDto {
   authorName: string
   authorRole: Role
   message: string
+  attachments: TicketAttachmentResponseDto[]
   createdAt: string
 }
 

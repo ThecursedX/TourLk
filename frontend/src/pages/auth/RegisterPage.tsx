@@ -67,7 +67,8 @@ export default function RegisterPage() {
     try {
       const { phone, ...rest } = values
       await register({ ...rest, phone: phone.trim() || undefined })
-      navigate('/dashboard', { replace: true })
+      const registeredUser = useAuthStore.getState().user
+      navigate(registeredUser?.role === 'TOURIST' ? '/' : '/dashboard', { replace: true })
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
         setFormError(err.response.data.message)
@@ -81,9 +82,22 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex justify-center">
+    <div className="flex flex-col items-center gap-6 py-8">
+      <div className="flex items-center gap-2 font-display text-lg font-extrabold text-slate-900">
+        <svg width="30" height="30" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+          <circle cx="17" cy="17" r="17" fill="#0F6259" />
+          <path
+            d="M6 21C9 17 12 23 15 19C18 15 21 21 24 17C26.5 13.7 28 15 28 15"
+            stroke="#F6EEDC"
+            strokeWidth="2"
+            strokeLinecap="round"
+            fill="none"
+          />
+        </svg>
+        TourLK
+      </div>
       <Card className="w-full max-w-sm">
-        <h1 className="mb-6 text-xl font-semibold text-slate-900">Create an account</h1>
+        <h1 className="mb-6 font-display text-xl font-bold text-slate-900">Create an account</h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
           <Input
             id="name"

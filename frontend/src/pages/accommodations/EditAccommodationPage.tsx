@@ -85,6 +85,12 @@ export default function EditAccommodationPage() {
             description: accommodation.description,
             locationId: accommodation.location.id,
             starRating: accommodation.starRating ?? undefined,
+            address: accommodation.address ?? '',
+            latitude: accommodation.latitude,
+            longitude: accommodation.longitude,
+            facilities: accommodation.facilities,
+            policies: accommodation.policies ?? '',
+            imageUrls: accommodation.imageUrls,
           }}
           currentLocation={accommodation.location}
           onSubmit={handlePropertySubmit}
@@ -121,6 +127,8 @@ export default function EditAccommodationPage() {
                   pricePerNight: room.pricePerNight,
                   totalRooms: room.totalRooms,
                   maxOccupancy: room.maxOccupancy,
+                  facilities: room.facilities,
+                  imageUrls: room.imageUrls,
                 }}
                 onSubmit={(values) => handleUpdateRoom(room.id, values)}
                 onCancel={() => setEditingRoomId(null)}

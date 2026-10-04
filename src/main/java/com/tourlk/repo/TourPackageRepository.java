@@ -4,21 +4,31 @@ import com.tourlk.entity.TourPackage;
 import com.tourlk.enums.PackageStatus;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-public interface TourPackageRepository extends JpaRepository<TourPackage, Long> {
+/**
+ * Browsing/filtering goes through {@link JpaSpecificationExecutor} with
+ * {@link TourPackageSpecifications}.
+ */
+public interface TourPackageRepository extends JpaRepository<TourPackage, Long>,
+        JpaSpecificationExecutor<TourPackage> {
 
     List<TourPackage> findByStatus(PackageStatus status);
 
+    List<TourPackage> findByStatus(PackageStatus status, Sort sort);
+
     List<TourPackage> findByCreatedById(Long userId);
+
+    long countByCreatedById(Long userId);
 
     /**
      * Fetches a package with a pessimistic write lock (row-level "FOR
@@ -33,15 +43,6 @@ public interface TourPackageRepository extends JpaRepository<TourPackage, Long> 
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000"))
     @Query("SELECT p FROM TourPackage p WHERE p.id = :id")
     Optional<TourPackage> findByIdForUpdate(@Param("id") Long id);
-
-    @Query("SELECT p FROM TourPackage p WHERE p.status = :status "
-            + "AND (:destinationId IS NULL OR p.destination.id = :destinationId) "
-            + "AND (:minPrice IS NULL OR p.price >= :minPrice) "
-            + "AND (:maxPrice IS NULL OR p.price <= :maxPrice)")
-    List<TourPackage> search(@Param("status") PackageStatus status,
-                              @Param("destinationId") Long destinationId,
-                              @Param("minPrice") BigDecimal minPrice,
-                              @Param("maxPrice") BigDecimal maxPrice);
 
     /** Used by the Destination module to show "N active packages here" counts. */
     long countByDestinationIdAndStatus(Long destinationId, PackageStatus status);

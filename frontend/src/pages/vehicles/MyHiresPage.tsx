@@ -36,8 +36,10 @@ export default function MyHiresPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (hireId: number) =>
-    reviews.some((r) => r.reviewableType === 'VEHICLE' && r.sourceBookingId === hireId)
+  const hasReview = (hireId: number, vehicleId: number) =>
+    reviews.some(
+      (r) => r.reviewableType === 'VEHICLE' && (r.sourceBookingId === hireId || r.reviewableId === vehicleId),
+    )
 
   const handleCancel = async (id: number) => {
     setActionError(null)
@@ -74,13 +76,16 @@ export default function MyHiresPage() {
             hire={hire}
             footer={
               <div className="flex flex-col gap-2">
+                {hire.bookingId && (
+                  <p className="text-xs text-slate-500">Paid and managed with your package booking.</p>
+                )}
                 <div className="flex gap-2">
-                  {hire.status === 'PENDING' && (
+                  {hire.status === 'PENDING' && !hire.bookingId && (
                     <Link to={`/checkout/vehicle_hire/${hire.id}`}>
                       <Button disabled={busyId === hire.id}>Pay Now</Button>
                     </Link>
                   )}
-                  {CANCELLABLE.has(hire.status) && (
+                  {CANCELLABLE.has(hire.status) && !hire.bookingId && (
                     <Button
                       variant="secondary"
                       disabled={busyId === hire.id}
@@ -89,7 +94,9 @@ export default function MyHiresPage() {
                       Cancel
                     </Button>
                   )}
-                  {hire.status === 'COMPLETED' && !hasReview(hire.id) && reviewingId !== hire.id && (
+                  {hire.status === 'COMPLETED' &&
+                    !hasReview(hire.id, hire.vehicle.id) &&
+                    reviewingId !== hire.id && (
                     <Button
                       variant="secondary"
                       disabled={busyId === hire.id}

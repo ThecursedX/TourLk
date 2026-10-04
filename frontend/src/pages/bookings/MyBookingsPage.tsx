@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { cancelBooking, getMyBookings, requestReschedule } from '../../api/bookingApi'
+import { getMyBookings, requestReschedule } from '../../api/bookingApi'
 import { getMyReviews } from '../../api/reviewApi'
 import BookingCard from '../../components/bookings/BookingCard'
+import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
 import ReviewForm from '../../components/reviews/ReviewForm'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -11,6 +13,7 @@ import type { BookingResponseDto } from '../../types/booking'
 import type { ReviewResponseDto } from '../../types/review'
 
 const RESCHEDULABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULED'])
+const PAYABLE = new Set(['PENDING', 'CONFIRMED'])
 const CANCELLABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'RESCHEDULED'])
 
 export default function MyBookingsPage() {
@@ -22,6 +25,8 @@ export default function MyBookingsPage() {
 
   const [rescheduleTargetId, setRescheduleTargetId] = useState<number | null>(null)
   const [rescheduleDate, setRescheduleDate] = useState('')
+
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
 
   const [reviews, setReviews] = useState<ReviewResponseDto[]>([])
   const [reviewingId, setReviewingId] = useState<number | null>(null)
@@ -42,21 +47,12 @@ export default function MyBookingsPage() {
       .catch(() => {})
   }, [])
 
-  const hasReview = (bookingId: number) =>
-    reviews.some((r) => r.reviewableType === 'TOUR_PACKAGE' && r.sourceBookingId === bookingId)
-
-  const handleCancel = async (id: number) => {
-    setActionError(null)
-    setBusyId(id)
-    try {
-      const updated = await cancelBooking(id)
-      setBookings((prev) => prev.map((b) => (b.id === id ? updated : b)))
-    } catch {
-      setActionError('That booking could not be cancelled. Please try again.')
-    } finally {
-      setBusyId(null)
-    }
-  }
+  const hasReview = (bookingId: number, tourPackageId: number) =>
+    reviews.some(
+      (r) =>
+        r.reviewableType === 'TOUR_PACKAGE' &&
+        (r.sourceBookingId === bookingId || r.reviewableId === tourPackageId),
+    )
 
   const openReschedule = (id: number) => {
     setActionError(null)
@@ -109,6 +105,7 @@ export default function MyBookingsPage() {
         {bookings.map((booking) => {
           const disabled = busyId === booking.id
           const isReschedulingThis = rescheduleTargetId === booking.id
+          const isCancellingThis = cancellingId === booking.id
 
           return (
             <BookingCard
@@ -117,7 +114,12 @@ export default function MyBookingsPage() {
               footer={
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-2">
-                    {RESCHEDULABLE.has(booking.status) && !isReschedulingThis && (
+                    {PAYABLE.has(booking.status) && !booking.paid && (
+                      <Link to={`/checkout/booking/${booking.id}`}>
+                        <Button disabled={disabled}>Pay Now</Button>
+                      </Link>
+                    )}
+                    {RESCHEDULABLE.has(booking.status) && !isReschedulingThis && !isCancellingThis && (
                       <Button
                         variant="secondary"
                         disabled={disabled}
@@ -126,21 +128,33 @@ export default function MyBookingsPage() {
                         Request Reschedule
                       </Button>
                     )}
-                    {CANCELLABLE.has(booking.status) && (
+                    {CANCELLABLE.has(booking.status) && !isCancellingThis && (
                       <Button
                         variant="secondary"
                         disabled={disabled}
-                        onClick={() => handleCancel(booking.id)}
+                        onClick={() => setCancellingId(booking.id)}
                       >
                         Cancel
                       </Button>
                     )}
-                    {booking.status === 'COMPLETED' && !hasReview(booking.id) && reviewingId !== booking.id && (
+                    {booking.status === 'COMPLETED' &&
+                      !hasReview(booking.id, booking.tourPackage.id) &&
+                      reviewingId !== booking.id && (
                       <Button variant="secondary" disabled={disabled} onClick={() => setReviewingId(booking.id)}>
                         Leave a Review
                       </Button>
                     )}
                   </div>
+                  {isCancellingThis && (
+                    <CancelBookingPanel
+                      bookingId={booking.id}
+                      onCancelled={(updated) => {
+                        setBookings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))
+                        setCancellingId(null)
+                      }}
+                      onClose={() => setCancellingId(null)}
+                    />
+                  )}
                   {reviewingId === booking.id && (
                     <ReviewForm
                       reviewableType="TOUR_PACKAGE"

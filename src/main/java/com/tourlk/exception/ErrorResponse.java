@@ -26,4 +26,10 @@ public class ErrorResponse {
     /** Field -> message, populated only for validation errors. */
     private Map<String, String> fieldErrors;
 
+    /** Machine-readable reason for errors a client is expected to handle, e.g. CONFIRMATION_REQUIRED. */
+    private String code;
+
+    /** Extra structured data for {@link #code}. */
+    private Map<String, Object> details;
+
 }

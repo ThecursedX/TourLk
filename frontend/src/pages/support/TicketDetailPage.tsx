@@ -8,15 +8,17 @@ import {
   getTicketById,
   reopenTicket,
   resolveTicket,
+  withdrawTicket,
 } from '../../api/supportTicketApi'
 import { useAuthStore } from '../../auth/authStore'
+import AttachmentPicker from '../../components/support/AttachmentPicker'
 import ReplyThread from '../../components/support/ReplyThread'
 import TicketPriorityBadge from '../../components/support/TicketPriorityBadge'
 import TicketStatusBadge from '../../components/support/TicketStatusBadge'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import type { ErrorResponse } from '../../types/auth'
-import type { TicketDetailResponseDto } from '../../types/supportTicket'
+import { ACTIVE_TICKET_STATUSES, type TicketDetailResponseDto } from '../../types/supportTicket'
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -30,6 +32,7 @@ export default function TicketDetailPage() {
   const [actionBusy, setActionBusy] = useState(false)
 
   const [replyMessage, setReplyMessage] = useState('')
+  const [replyFiles, setReplyFiles] = useState<File[]>([])
   const [replyError, setReplyError] = useState<string | null>(null)
   const [replying, setReplying] = useState(false)
 
@@ -63,8 +66,9 @@ export default function TicketDetailPage() {
     setReplyError(null)
     setReplying(true)
     try {
-      await addReply(ticketId, { message: replyMessage })
+      await addReply(ticketId, { message: replyMessage }, replyFiles)
       setReplyMessage('')
+      setReplyFiles([])
       load()
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
@@ -98,6 +102,8 @@ export default function TicketDetailPage() {
   const isAdmin = user?.role === 'ADMIN'
   const isRaiser = user?.userId === ticket.raisedById
   const backLink = isAdmin ? '/admin/tickets' : '/support/mine'
+  const isActive = ACTIVE_TICKET_STATUSES.includes(ticket.status)
+  const canReply = ticket.status !== 'CLOSED' && ticket.status !== 'WITHDRAWN'
 
   return (
     <div className="flex flex-col gap-4">
@@ -138,7 +144,7 @@ export default function TicketDetailPage() {
                 Assign to me
               </Button>
             )}
-            {(ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS') && (
+            {isActive && (
               <Button disabled={actionBusy} onClick={() => runAction(() => resolveTicket(ticket.id))}>
                 Mark Resolved
               </Button>
@@ -155,7 +161,34 @@ export default function TicketDetailPage() {
           </div>
         )}
 
-        {(ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') && (isRaiser || isAdmin) && (
+        {ticket.status === 'WAITING_FOR_USER' && isRaiser && (
+          <p className="rounded-lg bg-purple-50 px-3 py-2 text-sm text-purple-800">
+            Support is waiting for your reply on this ticket.
+          </p>
+        )}
+
+        {isRaiser && !isAdmin && isActive && (
+          <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+            <Button disabled={actionBusy} onClick={() => runAction(() => resolveTicket(ticket.id))}>
+              Mark as Resolved
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={actionBusy}
+              onClick={() => {
+                if (window.confirm('Withdraw this ticket? Support will stop working on it.')) {
+                  void runAction(() => withdrawTicket(ticket.id))
+                }
+              }}
+            >
+              Withdraw Ticket
+            </Button>
+          </div>
+        )}
+
+        {/* Raisers can reopen RESOLVED/CLOSED tickets; only an admin can reopen a withdrawn one. */}
+        {(((ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') && (isRaiser || isAdmin)) ||
+          (ticket.status === 'WITHDRAWN' && isAdmin)) && (
           <div className="flex border-t border-slate-200 pt-4">
             <Button variant="secondary" disabled={actionBusy} onClick={() => runAction(() => reopenTicket(ticket.id))}>
               Reopen Ticket
@@ -166,10 +199,10 @@ export default function TicketDetailPage() {
 
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">Conversation</h2>
-        <ReplyThread replies={replies} />
+        <ReplyThread ticketId={ticket.id} replies={replies} />
       </div>
 
-      {ticket.status !== 'CLOSED' ? (
+      {canReply ? (
         <Card>
           <form onSubmit={handleReply} className="flex flex-col gap-3">
             <label htmlFor="reply" className="text-sm font-medium text-slate-700">
@@ -182,6 +215,7 @@ export default function TicketDetailPage() {
               onChange={(e) => setReplyMessage(e.target.value)}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <AttachmentPicker files={replyFiles} onChange={setReplyFiles} disabled={replying} />
             {replyError && <p className="text-sm text-red-600">{replyError}</p>}
             <Button type="submit" disabled={replying || !replyMessage.trim()} className="self-start">
               {replying ? 'Sending...' : 'Send Reply'}
@@ -189,7 +223,11 @@ export default function TicketDetailPage() {
           </form>
         </Card>
       ) : (
-        (isRaiser || isAdmin) && <p className="text-slate-600">This ticket is closed. Reopen it to add a reply.</p>
+        (isRaiser || isAdmin) && (
+          <p className="text-slate-600">
+            This ticket is {ticket.status === 'WITHDRAWN' ? 'withdrawn' : 'closed'}. Reopen it to add a reply.
+          </p>
+        )
       )}
     </div>
   )

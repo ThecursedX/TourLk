@@ -16,6 +16,14 @@ export default function ReservationCard({ reservation, footer }: ReservationCard
         <h3 className="text-lg font-semibold text-slate-900">{reservation.room.accommodationName}</h3>
         <ReservationStatusBadge status={reservation.status} />
       </div>
+      {reservation.bookingId && (
+        <Link
+          to={`/bookings/${reservation.bookingId}`}
+          className="self-start rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-800 hover:underline"
+        >
+          Part of package: {reservation.packageTitle}
+        </Link>
+      )}
       <p className="text-sm text-slate-600">
         {reservation.room.roomType} · {reservation.room.accommodationLocation}
       </p>
@@ -27,7 +35,7 @@ export default function ReservationCard({ reservation, footer }: ReservationCard
           {reservation.numberOfRooms} room{reservation.numberOfRooms === 1 ? '' : 's'}
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-col gap-2 pt-1">
         <Link
           to={`/accommodations/${reservation.room.accommodationId}`}
           className="text-sm font-medium text-blue-600 hover:underline"

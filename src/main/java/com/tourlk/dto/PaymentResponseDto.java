@@ -24,6 +24,11 @@ public class PaymentResponseDto {
     private PaymentStatus status;
     private PayableType payableType;
     private Long payableId;
+    private Long payerId;
+    private String payerName;
+    private String payerEmail;
+    /** How much was actually refunded, if any — may be less than {@code amount} under a partial refund. */
+    private BigDecimal refundAmount;
     private LocalDateTime createdAt;
 
 }

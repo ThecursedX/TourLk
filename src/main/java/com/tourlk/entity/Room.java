@@ -1,6 +1,8 @@
 package com.tourlk.entity;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -8,6 +10,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,6 +19,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A room type within an {@link Accommodation}, e.g. "Deluxe Double".
@@ -51,5 +56,20 @@ public class Room extends AuditableEntity {
 
     @Column(name = "max_occupancy", nullable = false)
     private int maxOccupancy;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "room_facilities", joinColumns = @JoinColumn(name = "room_id"))
+    @OrderColumn(name = "display_order")
+    @Column(name = "facility", length = 100)
+    @Builder.Default
+    private List<String> facilities = new ArrayList<>();
+
+    /** Image URLs in display order (max 10); the first one is the cover image. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "room_images", joinColumns = @JoinColumn(name = "room_id"))
+    @OrderColumn(name = "display_order")
+    @Column(name = "image_url", length = 1000)
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
 
 }

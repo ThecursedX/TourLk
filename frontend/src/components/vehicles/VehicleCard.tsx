@@ -11,7 +11,17 @@ interface VehicleCardProps {
 
 export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3" attention={vehicle.status === 'PENDING_VERIFICATION'}>
+      {vehicle.imageUrls?.[0] && (
+        <img
+          src={vehicle.imageUrls[0]}
+          alt=""
+          className="h-36 w-full rounded-lg border border-slate-200 object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none'
+          }}
+        />
+      )}
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">
           {vehicle.make} {vehicle.model}
@@ -20,6 +30,7 @@ export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
       </div>
       <p className="text-sm text-slate-600">
         {vehicle.vehicleType} · {vehicle.registrationNumber}
+        {vehicle.airConditioned && <span className="text-slate-400"> · A/C</span>}
       </p>
       <div className="flex items-center justify-between text-sm text-slate-700">
         <span>Seats {vehicle.seatingCapacity}</span>
@@ -28,7 +39,7 @@ export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
           <span className="font-normal text-slate-500"> / day</span>
         </span>
       </div>
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link to={`/vehicles/${vehicle.id}`} className="text-sm font-medium text-blue-600 hover:underline">
           View details
         </Link>

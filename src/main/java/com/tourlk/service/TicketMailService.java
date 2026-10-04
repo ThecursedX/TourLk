@@ -18,9 +18,11 @@ import java.util.List;
 /**
  * Best-effort email notifications for the support ticket module, built
  * on the mail config in application.yml (spring.mail.*) that no other
- * module uses yet. Silently does nothing when MAIL_USERNAME/
- * MAIL_PASSWORD aren't set (the local/default case), and never lets a
- * mail failure fail the ticket operation that triggered it — see
+ * module uses yet. Email is opt-in: disabled unless {@code app.mail.enabled}
+ * is true AND MAIL_USERNAME/MAIL_PASSWORD are set, so no real SMTP server
+ * is required to run the app (the in-app {@code NotificationService} covers
+ * the same events regardless of this setting). Never lets a mail failure
+ * fail the ticket operation that triggered it — see
  * {@code SupportTicketServiceImpl}, which always calls this after its
  * own transaction-relevant work is done.
  */
@@ -35,12 +37,13 @@ public class TicketMailService {
 
     public TicketMailService(JavaMailSender mailSender,
                               UserRepository userRepository,
+                              @Value("${app.mail.enabled:false}") boolean mailEnabled,
                               @Value("${spring.mail.username}") String mailUsername,
                               @Value("${spring.mail.password}") String mailPassword) {
         this.mailSender = mailSender;
         this.userRepository = userRepository;
         this.fromAddress = mailUsername;
-        this.mailConfigured = StringUtils.hasText(mailUsername) && StringUtils.hasText(mailPassword);
+        this.mailConfigured = mailEnabled && StringUtils.hasText(mailUsername) && StringUtils.hasText(mailPassword);
     }
 
     public void notifyAdminsOfNewTicket(SupportTicket ticket) {

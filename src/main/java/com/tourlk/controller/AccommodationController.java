@@ -87,6 +87,19 @@ public class AccommodationController {
         return ResponseEntity.ok(accommodationService.reactivateAccommodation(id, currentUser(authentication)));
     }
 
+    @PutMapping("/{id}/temporarily-unavailable")
+    @PreAuthorize("hasAnyRole('ADMIN','HOTEL_PARTNER')")
+    public ResponseEntity<AccommodationResponseDto> temporarilyUnavailable(@PathVariable Long id,
+                                                                           Authentication authentication) {
+        return ResponseEntity.ok(accommodationService.markTemporarilyUnavailable(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/resume")
+    @PreAuthorize("hasAnyRole('ADMIN','HOTEL_PARTNER')")
+    public ResponseEntity<AccommodationResponseDto> resume(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(accommodationService.resumeAvailability(id, currentUser(authentication)));
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','HOTEL_PARTNER')")
     public ResponseEntity<AccommodationResponseDto> archive(@PathVariable Long id, Authentication authentication) {

@@ -115,7 +115,12 @@ export default function OwnerReservationsPage() {
               reservation={reservation}
               footer={
                 <div className="flex flex-wrap gap-2">
-                  {reservation.status === 'PENDING' && (
+                  {reservation.bookingId && (
+                    <p className="text-xs text-slate-500">
+                      Confirmed automatically when the package booking is paid.
+                    </p>
+                  )}
+                  {reservation.status === 'PENDING' && !reservation.bookingId && (
                     <Button disabled={disabled} onClick={() => runAction(reservation.id, confirmReservation)}>
                       Confirm
                     </Button>
@@ -125,7 +130,7 @@ export default function OwnerReservationsPage() {
                       Complete
                     </Button>
                   )}
-                  {CANCELLABLE.has(reservation.status) && (
+                  {CANCELLABLE.has(reservation.status) && !reservation.bookingId && (
                     <Button
                       variant="secondary"
                       disabled={disabled}

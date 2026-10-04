@@ -12,7 +12,7 @@ interface TicketCardProps {
 
 export default function TicketCard({ ticket, footer }: TicketCardProps) {
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="flex flex-col gap-3" attention={ticket.status === 'OPEN'}>
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">{ticket.subject}</h3>
         <TicketStatusBadge status={ticket.status} />
@@ -26,7 +26,7 @@ export default function TicketCard({ ticket, footer }: TicketCardProps) {
         <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
       </div>
       {ticket.assignedToName && <p className="text-xs text-slate-500">Assigned to {ticket.assignedToName}</p>}
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <Link to={`/support/${ticket.id}`} className="text-sm font-medium text-blue-600 hover:underline">
           View ticket
         </Link>

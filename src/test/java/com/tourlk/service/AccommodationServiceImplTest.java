@@ -35,6 +35,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -56,6 +57,8 @@ class AccommodationServiceImplTest {
     private RoomReservationRepository roomReservationRepository;
     @Mock
     private DestinationService destinationService;
+    @Mock
+    private NotificationService notificationService;
 
     @InjectMocks
     private AccommodationServiceImpl service;
@@ -72,9 +75,9 @@ class AccommodationServiceImplTest {
         stranger = User.builder().id(2L).name("Other Host").role(Role.HOTEL_PARTNER).build();
         admin = User.builder().id(9L).name("Amy Admin").role(Role.ADMIN).build();
         galle = Destination.builder()
-                .id(1L).name("Galle").region("Southern Province").status(DestinationStatus.ACTIVE).build();
+                .id(1L).name("Galle").region("Southern Province").status(DestinationStatus.PUBLISHED).build();
         mirissa = Destination.builder()
-                .id(2L).name("Mirissa").region("Southern Province").status(DestinationStatus.ACTIVE).build();
+                .id(2L).name("Mirissa").region("Southern Province").status(DestinationStatus.PUBLISHED).build();
         // toResponse() always loads the room list for the accommodation.
         lenient().when(roomRepository.findByAccommodationId(any())).thenReturn(List.of());
         // create/update resolve the location by id; not every test hits that path.
@@ -97,11 +100,25 @@ class AccommodationServiceImplTest {
     }
 
     private AccommodationRequestDto accRequest() {
-        return new AccommodationRequestDto("Ocean View", "Beachfront", 1L, 4);
+        return accRequest("Ocean View", "Beachfront", 1L, 4);
+    }
+
+    private AccommodationRequestDto accRequest(String name, String description, Long locationId, Integer stars) {
+        AccommodationRequestDto dto = new AccommodationRequestDto();
+        dto.setName(name);
+        dto.setDescription(description);
+        dto.setLocationId(locationId);
+        dto.setStarRating(stars);
+        return dto;
     }
 
     private RoomRequestDto roomRequest() {
-        return new RoomRequestDto("Suite", new BigDecimal("120.00"), 3, 4);
+        RoomRequestDto dto = new RoomRequestDto();
+        dto.setRoomType("Suite");
+        dto.setPricePerNight(new BigDecimal("120.00"));
+        dto.setTotalRooms(3);
+        dto.setMaxOccupancy(4);
+        return dto;
     }
 
     private void expectAccSaveEchoed() {
@@ -116,6 +133,39 @@ class AccommodationServiceImplTest {
 
     @Nested
     class CreateAndUpdate {
+
+        @Test
+        void createAccommodation_withCoordinates_savesAndReturnsThem() {
+            expectAccSaveEchoed();
+            AccommodationRequestDto request = accRequest();
+            request.setLatitude(6.9271);
+            request.setLongitude(79.8612);
+
+            AccommodationResponseDto result = service.createAccommodation(request, owner);
+
+            assertThat(result.getLatitude()).isEqualTo(6.9271);
+            assertThat(result.getLongitude()).isEqualTo(79.8612);
+        }
+
+        @Test
+        void createAccommodation_withoutCoordinates_leavesThemNull() {
+            expectAccSaveEchoed();
+
+            AccommodationResponseDto result = service.createAccommodation(accRequest(), owner);
+
+            assertThat(result.getLatitude()).isNull();
+            assertThat(result.getLongitude()).isNull();
+        }
+
+        @Test
+        void createAccommodation_onlyOneCoordinate_isRejected() {
+            AccommodationRequestDto request = accRequest();
+            request.setLatitude(6.9271);
+
+            assertThatThrownBy(() -> service.createAccommodation(request, owner))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessage("Latitude and longitude must be provided together");
+        }
 
         @Test
         void createAccommodation_savesAsDraftOwnedByCurrentUser() {
@@ -142,7 +192,7 @@ class AccommodationServiceImplTest {
             when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.DRAFT)));
             expectAccSaveEchoed();
 
-            AccommodationRequestDto edit = new AccommodationRequestDto("Renamed", "New desc", 2L, 5);
+            AccommodationRequestDto edit = accRequest("Renamed", "New desc", 2L, 5);
             AccommodationResponseDto result = service.updateAccommodation(30L, edit, owner);
 
             assertThat(result.getName()).isEqualTo("Renamed");
@@ -221,6 +271,201 @@ class AccommodationServiceImplTest {
 
             assertThatThrownBy(() -> service.archiveAccommodation(30L, owner))
                     .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+    }
+
+    @Nested
+    class ExtendedFieldsAndAvailability {
+
+        @Test
+        void createAccommodation_persistsAndReturnsExtendedFields() {
+            expectAccSaveEchoed();
+            AccommodationRequestDto dto = accRequest();
+            dto.setAddress("  12 Beach Rd, Galle ");
+            dto.setFacilities(List.of("Pool", "WiFi"));
+            dto.setPolicies("Check-in after 2pm");
+            dto.setImageUrls(List.of("http://img/1.jpg"));
+
+            AccommodationResponseDto result = service.createAccommodation(dto, owner);
+
+            assertThat(result.getAddress()).isEqualTo("12 Beach Rd, Galle");
+            assertThat(result.getFacilities()).containsExactly("Pool", "WiFi");
+            assertThat(result.getPolicies()).isEqualTo("Check-in after 2pm");
+            assertThat(result.getImageUrls()).containsExactly("http://img/1.jpg");
+        }
+
+        @Test
+        void addRoom_persistsFacilitiesAndImages() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+            RoomRequestDto dto = roomRequest();
+            dto.setFacilities(List.of("Balcony"));
+            dto.setImageUrls(List.of("http://img/r1.jpg"));
+
+            RoomResponseDto result = service.addRoom(30L, dto, owner);
+
+            assertThat(result.getFacilities()).containsExactly("Balcony");
+            assertThat(result.getImageUrls()).containsExactly("http://img/r1.jpg");
+        }
+
+        @Test
+        void markTemporarilyUnavailable_active_pausesBookings() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            expectAccSaveEchoed();
+
+            assertThat(service.markTemporarilyUnavailable(30L, owner).getStatus())
+                    .isEqualTo(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+        }
+
+        @Test
+        void markTemporarilyUnavailable_byUnrelatedHost_throwsAccessDenied() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+
+            assertThatThrownBy(() -> service.markTemporarilyUnavailable(30L, stranger))
+                    .isInstanceOf(AccessDeniedException.class);
+        }
+
+        @Test
+        void markTemporarilyUnavailable_draft_throwsInvalidStatusTransition() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.DRAFT)));
+
+            assertThatThrownBy(() -> service.markTemporarilyUnavailable(30L, owner))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void resumeAvailability_withFreeRooms_becomesActive() {
+            when(accommodationRepository.findById(30L))
+                    .thenReturn(Optional.of(accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE)));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(1);
+            expectAccSaveEchoed();
+
+            assertThat(service.resumeAvailability(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        }
+
+        @Test
+        void resumeAvailability_whenEverythingBookedTonight_becomesFullyBooked() {
+            when(accommodationRepository.findById(30L))
+                    .thenReturn(Optional.of(accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE)));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
+            expectAccSaveEchoed();
+
+            assertThat(service.resumeAvailability(30L, owner).getStatus())
+                    .isEqualTo(AccommodationStatus.FULLY_BOOKED);
+        }
+
+        @Test
+        void resumeAvailability_notPaused_throwsInvalidStatusTransition() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+
+            assertThatThrownBy(() -> service.resumeAvailability(30L, owner))
+                    .isInstanceOf(InvalidStatusTransitionException.class);
+        }
+
+        @Test
+        void refreshAvailabilityStatus_everyRoomTypeFullToday_setsFullyBooked() {
+            Accommodation acc = accommodation(AccommodationStatus.ACTIVE);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            when(roomRepository.findByAccommodationId(30L))
+                    .thenReturn(List.of(room(AccommodationStatus.ACTIVE), room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
+
+            service.refreshAvailabilityStatus(30L);
+
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
+            verify(accommodationRepository).save(acc);
+        }
+
+        @Test
+        void refreshAvailabilityStatus_oneRoomTypeStillFree_staysActive() {
+            Accommodation acc = accommodation(AccommodationStatus.ACTIVE);
+            Room full = room(AccommodationStatus.ACTIVE);
+            Room free = room(AccommodationStatus.ACTIVE);
+            free.setId(41L);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(full, free));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(40L), any(), any(), any(), any())).thenReturn(5);
+            when(roomReservationRepository.sumReservedRoomsOverlapping(eq(41L), any(), any(), any(), any())).thenReturn(4);
+
+            service.refreshAvailabilityStatus(30L);
+
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void refreshAvailabilityStatus_fullyBookedThatFreedUp_reopens() {
+            Accommodation acc = accommodation(AccommodationStatus.FULLY_BOOKED);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(4);
+
+            service.refreshAvailabilityStatus(30L);
+
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        }
+
+        @Test
+        void refreshAvailabilityStatus_noRoomTypes_isNeverFullyBooked() {
+            Accommodation acc = accommodation(AccommodationStatus.ACTIVE);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of());
+
+            service.refreshAvailabilityStatus(30L);
+
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        }
+
+        @Test
+        void refreshAvailabilityStatus_temporarilyUnavailable_isLeftAlone() {
+            Accommodation acc = accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+
+            service.refreshAvailabilityStatus(30L);
+
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void refreshAllAvailabilityStatuses_checksActiveAndFullyBookedOnly() {
+            Accommodation active = accommodation(AccommodationStatus.ACTIVE);
+            Accommodation full = accommodation(AccommodationStatus.FULLY_BOOKED);
+            when(accommodationRepository.findByStatus(AccommodationStatus.ACTIVE)).thenReturn(List.of(active));
+            when(accommodationRepository.findByStatus(AccommodationStatus.FULLY_BOOKED)).thenReturn(List.of(full));
+            when(roomRepository.findByAccommodationId(30L)).thenReturn(List.of(room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(5);
+
+            service.refreshAllAvailabilityStatuses();
+
+            assertThat(active.getStatus()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
+            assertThat(full.getStatus()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
+        }
+
+        @Test
+        void getAllActive_includesFullyBookedAndTemporarilyUnavailableListings() {
+            when(accommodationRepository.search(any(), any())).thenReturn(List.of());
+
+            service.getAllActive(null);
+
+            org.mockito.ArgumentCaptor<java.util.Collection<AccommodationStatus>> statuses =
+                    org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+            verify(accommodationRepository).search(statuses.capture(), any());
+            assertThat(statuses.getValue()).containsExactlyInAnyOrder(
+                    AccommodationStatus.ACTIVE, AccommodationStatus.FULLY_BOOKED,
+                    AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+        }
+
+        @Test
+        void updateAccommodation_whileTemporarilyUnavailable_isAllowed() {
+            when(accommodationRepository.findById(30L))
+                    .thenReturn(Optional.of(accommodation(AccommodationStatus.TEMPORARILY_UNAVAILABLE)));
+            expectAccSaveEchoed();
+
+            assertThat(service.updateAccommodation(30L, accRequest(), owner).getStatus())
+                    .isEqualTo(AccommodationStatus.TEMPORARILY_UNAVAILABLE);
         }
     }
 

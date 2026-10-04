@@ -1,5 +1,8 @@
 package com.tourlk.enums;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * Lifecycle status of a booking.
  * <p>
@@ -15,5 +18,13 @@ public enum BookingStatus {
     RESCHEDULE_REQUESTED,
     RESCHEDULED,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    /** A PENDING booking turned down by the package owner (GUIDE) or an ADMIN, with a reason. */
+    REJECTED;
+
+    /** Statuses that currently occupy a seat on their travelDate. RESCHEDULED counts — see above. */
+    public static final Set<BookingStatus> CAPACITY_HOLDING = EnumSet.of(CONFIRMED, RESCHEDULED);
+
+    /** Statuses a booking can never leave. Every other status is "active". */
+    public static final Set<BookingStatus> TERMINAL = EnumSet.of(COMPLETED, CANCELLED, REJECTED);
 }

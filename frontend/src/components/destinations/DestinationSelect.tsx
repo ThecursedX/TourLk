@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { browseDestinations } from '../../api/destinationApi'
 import Select from '../ui/Select'
-import type { DestinationResponseDto, DestinationSummary } from '../../types/destination'
+import { formatProvince, type DestinationResponseDto, type DestinationSummary } from '../../types/destination'
 
 interface DestinationSelectProps {
   id?: string
@@ -64,7 +64,7 @@ export default function DestinationSelect({
       )}
       {destinations.map((d) => (
         <option key={d.id} value={d.id}>
-          {d.name} — {d.region}
+          {d.name} — {d.district}, {formatProvince(d.province)}
         </option>
       ))}
     </Select>

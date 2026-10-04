@@ -1,7 +1,10 @@
 package com.tourlk.entity;
 
+import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -11,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
@@ -18,6 +22,10 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A tourist's review of a TourPackage, Accommodation or Vehicle, left
@@ -67,5 +75,30 @@ public class Review extends AuditableEntity {
 
     @Column(length = 1000)
     private String comment;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "review_images", joinColumns = @JoinColumn(name = "review_id"))
+    @OrderColumn(name = "display_order")
+    @Column(name = "image_url", length = 1000)
+    @Builder.Default
+    private List<String> imageUrls = new ArrayList<>();
+
+    /**
+     * Moderation/lifecycle status — replaces the old {@code flagged}
+     * boolean. No NOT NULL constraint so {@code ddl-auto: update} can add
+     * the column to a table that already has rows; legacy rows are
+     * backfilled to PUBLISHED/REPORTED by {@code ReviewStatusBackfillRunner}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    @Builder.Default
+    private ReviewStatus status = ReviewStatus.PUBLISHED;
+
+    /** Public reply from the guide who owns the reviewed tour package. */
+    @Column(name = "guide_reply", length = 1000)
+    private String guideReply;
+
+    @Column(name = "guide_reply_at")
+    private LocalDateTime guideReplyAt;
 
 }

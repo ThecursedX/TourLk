@@ -5,6 +5,8 @@ import {
   deactivateVehicle,
   getMyVehicles,
   reactivateVehicle,
+  startVehicleMaintenance,
+  submitVehicleForVerification,
 } from '../../api/vehicleApi'
 import VehicleCard from '../../components/vehicles/VehicleCard'
 import Button from '../../components/ui/Button'
@@ -79,16 +81,36 @@ export default function MyVehiclesPage() {
                       </Button>
                     </Link>
                   )}
-                  {vehicle.status === 'ACTIVE' && (
+                  {vehicle.status === 'DRAFT' && (
+                    <Button
+                      variant="secondary"
+                      disabled={disabled}
+                      onClick={() => runAction(vehicle.id, submitVehicleForVerification)}
+                    >
+                      Submit
+                    </Button>
+                  )}
+                  {(vehicle.status === 'AVAILABLE' || vehicle.status === 'BOOKED') && (
+                    <Button
+                      variant="secondary"
+                      disabled={disabled}
+                      onClick={() => runAction(vehicle.id, startVehicleMaintenance)}
+                    >
+                      Start maintenance
+                    </Button>
+                  )}
+                  {(vehicle.status === 'AVAILABLE' ||
+                    vehicle.status === 'BOOKED' ||
+                    vehicle.status === 'UNDER_MAINTENANCE') && (
                     <Button
                       variant="secondary"
                       disabled={disabled}
                       onClick={() => runAction(vehicle.id, deactivateVehicle)}
                     >
-                      Deactivate
+                      Take out of service
                     </Button>
                   )}
-                  {vehicle.status === 'INACTIVE' && (
+                  {(vehicle.status === 'OUT_OF_SERVICE' || vehicle.status === 'UNDER_MAINTENANCE') && (
                     <Button
                       variant="secondary"
                       disabled={disabled}
@@ -97,7 +119,8 @@ export default function MyVehiclesPage() {
                       Reactivate
                     </Button>
                   )}
-                  {vehicle.status !== 'ARCHIVED' && (
+                  {/* Out-of-service vehicles are never deleted; reactivate instead. */}
+                  {vehicle.status !== 'ARCHIVED' && vehicle.status !== 'OUT_OF_SERVICE' && (
                     <Button
                       variant="secondary"
                       disabled={disabled}

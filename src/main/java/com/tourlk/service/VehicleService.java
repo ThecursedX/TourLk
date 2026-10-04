@@ -13,11 +13,15 @@ public interface VehicleService {
 
     VehicleResponseDto updateVehicle(Long id, VehicleRequestDto request, User currentUser);
 
+    VehicleResponseDto submitForVerification(Long id, User currentUser);
+
     VehicleResponseDto approveVehicle(Long id);
 
     VehicleResponseDto rejectVehicle(Long id);
 
     VehicleResponseDto deactivateVehicle(Long id, User currentUser);
+
+    VehicleResponseDto startMaintenance(Long id, User currentUser);
 
     VehicleResponseDto reactivateVehicle(Long id, User currentUser);
 

@@ -10,6 +10,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
 
     List<SupportTicket> findByRaisedById(Long raisedById);
 
+    long countByRaisedById(Long raisedById);
+
     List<SupportTicket> findByStatus(TicketStatus status);
 
     List<SupportTicket> findByAssignedToId(Long assignedToId);

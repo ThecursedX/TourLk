@@ -4,29 +4,38 @@ import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.PaymentIntent;
 import com.stripe.net.Webhook;
+import com.tourlk.dto.BulkDeletePaymentsRequestDto;
+import com.tourlk.dto.BulkDeletePaymentsResultDto;
 import com.tourlk.dto.InvoiceResponseDto;
 import com.tourlk.dto.PaymentIntentResponseDto;
 import com.tourlk.dto.PaymentRequestDto;
 import com.tourlk.dto.PaymentResponseDto;
+import com.tourlk.dto.PaymentSummaryDto;
 import com.tourlk.entity.User;
+import com.tourlk.enums.PayableType;
+import com.tourlk.enums.PaymentStatus;
 import com.tourlk.service.PaymentService;
 import com.tourlk.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -88,10 +97,35 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.refundPayment(id));
     }
 
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
+        paymentService.deletePayment(id, currentUser(authentication));
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/bulk")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<BulkDeletePaymentsResultDto> bulkDelete(
+            @Valid @RequestBody BulkDeletePaymentsRequestDto request, Authentication authentication) {
+        return ResponseEntity.ok(paymentService.deletePayments(request.getIds(), currentUser(authentication)));
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<PaymentResponseDto>> all() {
-        return ResponseEntity.ok(paymentService.getAllPayments());
+    public ResponseEntity<List<PaymentResponseDto>> all(
+            @RequestParam(required = false) PaymentStatus status,
+            @RequestParam(required = false) PayableType payableType,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(paymentService.searchPayments(status, payableType, search, from, to));
+    }
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<PaymentSummaryDto> summary() {
+        return ResponseEntity.ok(paymentService.getPaymentSummary());
     }
 
     @GetMapping("/mine")

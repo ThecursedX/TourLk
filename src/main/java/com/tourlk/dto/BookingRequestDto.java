@@ -9,12 +9,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import jakarta.validation.Valid;
+
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
 public class BookingRequestDto {
 
     @NotNull(message = "Tour package is required")
@@ -30,5 +32,20 @@ public class BookingRequestDto {
 
     @Size(max = 1000, message = "Special requests must be at most 1000 characters")
     private String specialRequests;
+
+    /** Optional hotel-room add-ons of the package (dates are derived from the trip). */
+    @Valid
+    private List<AddOnRoomSelectionDto> addOnRooms;
+
+    /** Optional vehicle add-ons of the package (held for every day of the trip). */
+    private List<Long> addOnVehicleIds;
+
+    public BookingRequestDto(Long tourPackageId, LocalDate travelDate, Integer numberOfTravelers,
+                             String specialRequests) {
+        this.tourPackageId = tourPackageId;
+        this.travelDate = travelDate;
+        this.numberOfTravelers = numberOfTravelers;
+        this.specialRequests = specialRequests;
+    }
 
 }

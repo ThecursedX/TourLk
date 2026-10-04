@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -22,6 +23,7 @@ public class TicketReplyResponseDto {
     /** Lets the frontend style ADMIN replies differently from the raiser's own. */
     private Role authorRole;
     private String message;
+    private List<TicketAttachmentResponseDto> attachments;
     private LocalDateTime createdAt;
 
 }
