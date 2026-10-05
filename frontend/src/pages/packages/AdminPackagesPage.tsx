@@ -124,7 +124,7 @@ export default function AdminPackagesPage() {
                   onSubmit={(reason) => runAction(pkg.id, () => rejectPackage(pkg.id, reason))}
                 />
               ) : (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button disabled={disabled} onClick={() => runAction(pkg.id, () => approvePackage(pkg.id))}>
                     Approve
                   </Button>

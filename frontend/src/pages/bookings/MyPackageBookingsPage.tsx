@@ -197,7 +197,7 @@ export default function MyPackageBookingsPage() {
                       onSubmit={(reason) => handleReject(booking.id, reason)}
                     />
                   ) : (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Button disabled={disabled} onClick={() => handleConfirm(booking.id)}>
                         Confirm
                       </Button>

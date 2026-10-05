@@ -79,7 +79,7 @@ export default function MyHiresPage() {
                 {hire.bookingId && (
                   <p className="text-xs text-slate-500">Paid and managed with your package booking.</p>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {hire.status === 'PENDING' && !hire.bookingId && (
                     <Link to={`/checkout/vehicle_hire/${hire.id}`}>
                       <Button disabled={busyId === hire.id}>Pay Now</Button>

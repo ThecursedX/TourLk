@@ -67,7 +67,7 @@ export default function AdminAccommodationApprovalsPage() {
               key={accommodation.id}
               accommodation={accommodation}
               footer={
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={disabled}
                     onClick={() => handleDecision(accommodation.id, approveAccommodation)}

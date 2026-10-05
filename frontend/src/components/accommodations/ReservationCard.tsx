@@ -13,18 +13,15 @@ interface ReservationCardProps {
 export default function ReservationCard({ reservation, footer }: ReservationCardProps) {
   return (
     <Card className="flex min-w-0 flex-col gap-3">
-      <div className="flex items-start gap-3">
-        <CardImage
-          urls={reservation.room.coverImageUrl ? [reservation.room.coverImageUrl] : []}
-          alt={reservation.room.accommodationName}
-          className="!aspect-auto h-20 w-28 shrink-0"
-        />
-        <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
-          <h3 className="min-w-0 break-words text-lg font-semibold text-slate-900">
-            {reservation.room.accommodationName}
-          </h3>
-          <ReservationStatusBadge status={reservation.status} />
-        </div>
+      <CardImage
+        urls={reservation.room.coverImageUrl ? [reservation.room.coverImageUrl] : []}
+        alt={reservation.room.accommodationName}
+      />
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <h3 className="min-w-0 break-words text-lg font-semibold text-slate-900">
+          {reservation.room.accommodationName}
+        </h3>
+        <ReservationStatusBadge status={reservation.status} />
       </div>
       {reservation.bookingId && (
         <Link

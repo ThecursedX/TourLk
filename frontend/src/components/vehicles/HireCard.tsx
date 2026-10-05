@@ -12,19 +12,16 @@ interface HireCardProps {
 
 export default function HireCard({ hire, footer }: HireCardProps) {
   return (
-    <Card className="flex flex-col gap-3">
-      <div className="flex items-start gap-3">
-        <CardImage
-          urls={hire.vehicle.coverImageUrl ? [hire.vehicle.coverImageUrl] : []}
-          alt={`${hire.vehicle.make} ${hire.vehicle.model}`}
-          className="!aspect-auto h-20 w-28 shrink-0"
-        />
-        <div className="flex min-w-0 flex-1 flex-wrap items-start justify-between gap-2">
-          <h3 className="min-w-0 break-words text-lg font-semibold text-slate-900">
-            {hire.vehicle.make} {hire.vehicle.model}
-          </h3>
-          <HireStatusBadge status={hire.status} />
-        </div>
+    <Card className="flex min-w-0 flex-col gap-3">
+      <CardImage
+        urls={hire.vehicle.coverImageUrl ? [hire.vehicle.coverImageUrl] : []}
+        alt={`${hire.vehicle.make} ${hire.vehicle.model}`}
+      />
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <h3 className="min-w-0 break-words text-lg font-semibold text-slate-900">
+          {hire.vehicle.make} {hire.vehicle.model}
+        </h3>
+        <HireStatusBadge status={hire.status} />
       </div>
       {hire.bookingId && (
         <Link
@@ -37,7 +34,7 @@ export default function HireCard({ hire, footer }: HireCardProps) {
       <p className="text-sm text-slate-600">
         {hire.vehicle.vehicleType} · {hire.vehicle.registrationNumber}
       </p>
-      <div className="flex items-center justify-between text-sm text-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-slate-700">
         <span>
           {hire.startDate} &rarr; {hire.endDate}
         </span>
