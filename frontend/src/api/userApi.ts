@@ -71,3 +71,10 @@ export function verifyLicence(id: number) {
 export function rejectLicence(id: number, reason: string) {
   return axiosClient.put<UserResponseDto>(`/users/${id}/licence/reject`, { reason }).then((res) => res.data)
 }
+
+export function promoteToAdmin(id: number) {
+  return axiosClient.put<UserResponseDto>(`/users/${id}/promote-admin`).then((res) => res.data)
+}
+export function demoteAdmin(id: number) {
+  return axiosClient.put<UserResponseDto>(`/users/${id}/demote-admin`).then((res) => res.data)
+}

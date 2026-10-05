@@ -101,4 +101,8 @@ public interface UserService {
     /** @throws com.tourlk.exception.InvalidStatusTransitionException if the licence isn't PENDING */
     UserResponseDto rejectLicence(Long userId, String reason, User admin);
 
+    UserResponseDto promoteToAdmin(Long id, User currentUser);
+
+    UserResponseDto demoteAdmin(Long id, User currentUser);
+
 }

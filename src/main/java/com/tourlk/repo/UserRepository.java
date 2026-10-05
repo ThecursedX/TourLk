@@ -29,4 +29,5 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByVerificationStatusAndRoleInAndLicenceExpiryLessThanEqual(
             VerificationStatus verificationStatus, java.util.Collection<Role> roles, java.time.LocalDate cutoff);
 
+    Optional<User> findFirstByRoleOrderByIdAsc(Role role);
 }

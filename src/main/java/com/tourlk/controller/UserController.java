@@ -101,6 +101,18 @@ public class UserController {
         return ResponseEntity.ok(userService.reactivateUser(id));
     }
 
+    @PutMapping("/{id}/promote-admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponseDto> promoteToAdmin(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(userService.promoteToAdmin(id, currentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/demote-admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<UserResponseDto> demoteAdmin(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(userService.demoteAdmin(id, currentUser(authentication)));
+    }
+    
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {

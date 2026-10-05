@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { isAxiosError } from 'axios'
-import { deactivateUser, deleteUser, getAllUsers, reactivateUser } from '../../api/userApi'
+import { deactivateUser, deleteUser, demoteAdmin, getAllUsers, promoteToAdmin, reactivateUser } from '../../api/userApi'
 import Input from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import type { ErrorResponse } from '../../types/auth'
 import type { UserResponseDto } from '../../types/user'
+
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserResponseDto[]>([])
@@ -42,6 +43,24 @@ export default function AdminUsersPage() {
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
     } catch (err) {
       setActionError(describeError(err, 'That action could not be completed. Please try again.'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+const handleRoleChange = async (user: UserResponseDto) => {
+const promoting = user.role !== 'ADMIN'
+const message = promoting
+      ? `Make ${user.name} an admin? They will be able to manage all users and listings.`
+      : `Remove admin access from ${user.name}? They will become a tourist.`
+    if (!window.confirm(message)) return
+    setActionError(null)
+    setBusyId(user.id)
+    try {
+      const updated = promoting ? await promoteToAdmin(user.id) : await demoteAdmin(user.id)
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+    } catch (err) {
+      setActionError(describeError(err, 'That role change could not be completed. Please try again.'))
     } finally {
       setBusyId(null)
     }
@@ -112,26 +131,35 @@ export default function AdminUsersPage() {
                       {user.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        disabled={busyId === user.id}
-                        onClick={() => handleToggle(user)}
-                      >
-                        {user.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
-                      </Button>
-                      {user.status === 'DEACTIVATED' && (
-                        <Button
-                          variant="secondary"
-                          disabled={busyId === user.id}
-                          onClick={() => handleDelete(user)}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </td>
+                 <td className="px-4 py-3 text-right">
+  <div className="flex justify-end gap-2">
+    {user.status === 'ACTIVE' && (
+      <Button
+        variant="secondary"
+        disabled={busyId === user.id}
+        onClick={() => handleRoleChange(user)}
+      >
+        {user.role === 'ADMIN' ? 'Remove admin' : 'Make admin'}
+      </Button>
+    )}
+    <Button
+      variant="secondary"
+      disabled={busyId === user.id}
+      onClick={() => handleToggle(user)}
+    >
+      {user.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
+    </Button>
+    {user.status === 'DEACTIVATED' && (
+      <Button
+        variant="secondary"
+        disabled={busyId === user.id}
+        onClick={() => handleDelete(user)}
+      >
+        Delete
+      </Button>
+    )}
+  </div>
+</td>
                 </tr>
               ))}
             </tbody>

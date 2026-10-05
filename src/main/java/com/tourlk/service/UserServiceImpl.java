@@ -201,6 +201,51 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+@Transactional
+public UserResponseDto promoteToAdmin(Long id, User currentUser) {
+    User user = getById(id);
+    if (user.getRole() == Role.ADMIN) {
+        throw new BadRequestException("This user is already an admin");
+    }
+    if (user.getStatus() != UserStatus.ACTIVE) {
+        throw new BadRequestException("Only active accounts can be promoted to admin");
+    }
+    user.setRole(Role.ADMIN);
+    User saved = userRepository.save(user);
+
+    notificationService.notify(saved, NotificationType.ACCOUNT_PROFILE_UPDATED, "You are now an admin",
+            "An administrator gave your account admin access. Sign out and back in to see the admin pages.",
+            "/profile");
+    return toResponse(saved);
+}
+
+@Override
+@Transactional
+public UserResponseDto demoteAdmin(Long id, User currentUser) {
+    if (currentUser.getId().equals(id)) {
+        throw new BadRequestException("You cannot change your own role");
+    }
+    User user = getById(id);
+    if (user.getRole() != Role.ADMIN) {
+        throw new BadRequestException("This user is not an admin");
+    }
+    User mainAdmin = userRepository.findFirstByRoleOrderByIdAsc(Role.ADMIN).orElse(null);
+    if (mainAdmin != null && mainAdmin.getId().equals(id)) {
+        throw new BadRequestException("The main admin cannot be demoted");
+    }
+    if (user.getStatus() == UserStatus.ACTIVE
+            && userRepository.countByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE) <= 1) {
+        throw new BadRequestException("At least one active admin must remain");
+    }
+    user.setRole(Role.TOURIST);
+    User saved = userRepository.save(user);
+
+    notificationService.notify(saved, NotificationType.ACCOUNT_PROFILE_UPDATED, "Admin access removed",
+            "Your admin access was removed. Your account is now a tourist account.", "/profile");
+    return toResponse(saved);
+}
+
+    @Override
     @Transactional
     public UserResponseDto reactivateUser(Long id) {
         User user = getById(id);
