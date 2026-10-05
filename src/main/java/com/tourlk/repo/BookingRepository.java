@@ -2,6 +2,7 @@ package com.tourlk.repo;
 
 import com.tourlk.entity.Booking;
 import com.tourlk.enums.BookingStatus;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +18,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     long countByTouristId(Long touristId);
 
     List<Booking> findByTourPackageId(Long packageId);
+
+    List<Booking> findByTourPackageCreatedById(Long guideId, Sort sort);
 
     /**
      * Sums travelers across bookings that currently occupy capacity for a
@@ -48,6 +51,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     long countUpcomingActiveBookings(@Param("packageId") Long packageId,
                                      @Param("fromDate") LocalDate fromDate,
                                      @Param("terminalStatuses") Collection<BookingStatus> terminalStatuses);
+
+    /**
+     * Active (non-terminal) bookings of every package at a destination that
+     * start on or before {@code latestStart}. The caller narrows these to the
+     * ones whose trip dates really overlap a closure window (a trip's end
+     * depends on its package's durationDays, which isn't portable date maths
+     * in JPQL). Packages are fetched so durationDays is readable without a session.
+     */
+    @Query("SELECT b FROM Booking b JOIN FETCH b.tourPackage p WHERE p.destination.id = :destinationId "
+            + "AND b.status NOT IN :terminalStatuses AND b.travelDate <= :latestStart")
+    List<Booking> findActiveByDestinationStartingOnOrBefore(@Param("destinationId") Long destinationId,
+                                                            @Param("latestStart") LocalDate latestStart,
+                                                            @Param("terminalStatuses") Collection<BookingStatus> terminalStatuses);
 
     /**
      * Counts active (non-terminal) bookings that sit on, or have a pending

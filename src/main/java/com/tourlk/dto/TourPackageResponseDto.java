@@ -42,6 +42,8 @@ public class TourPackageResponseDto {
     private List<String> inclusions;
     private List<String> exclusions;
     private List<String> imageUrls;
+    /** Optional hotel rooms / vehicles tourists can add when booking. */
+    private List<PackageAddOnResponseDto> addOns;
 
     /**
      * True once the package has any departure (past or upcoming). Bookings

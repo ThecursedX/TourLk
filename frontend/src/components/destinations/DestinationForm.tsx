@@ -6,6 +6,7 @@ import Button from '../ui/Button'
 import Combobox from '../ui/Combobox'
 import Input from '../ui/Input'
 import Select from '../ui/Select'
+import LocationPicker from '../maps/LocationPicker'
 import type { ErrorResponse } from '../../types/auth'
 import {
   PROVINCES,
@@ -234,7 +235,17 @@ export default function DestinationForm({
                   </option>
               ))}
             </Select>
-            <Input
+            <div className="sm:col-span-2">
+            <LocationPicker
+              value={
+                values.latitude != null && values.longitude != null
+                  ? { lat: values.latitude, lng: values.longitude }
+                  : null
+              }
+              onChange={({ lat, lng }) => setValues((v) => ({ ...v, latitude: lat, longitude: lng }))}
+            />
+          </div>
+          <Input
                 id="latitude"
                 label="Latitude (optional)"
                 type="number"

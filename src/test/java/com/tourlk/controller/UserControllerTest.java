@@ -14,7 +14,13 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.core.io.ByteArrayResource;
+import com.tourlk.dto.LicenceDocumentDownload;
+import org.springframework.security.access.AccessDeniedException;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +33,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -135,22 +142,65 @@ class UserControllerTest {
     @WithMockUser(username = "g@example.com", roles = "GUIDE")
     void submitLicence_asGuide_returnsOk() throws Exception {
         stubCurrentUser(Role.GUIDE);
-        when(userService.submitLicence(any(), any())).thenReturn(UserResponseDto.builder().id(1L).build());
+        when(userService.submitLicence(any(), any(), any())).thenReturn(UserResponseDto.builder().id(1L).build());
 
-        mvc.perform(put("/api/users/me/licence").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"licenceNumber\":\"DL-1\",\"licenceExpiry\":\"2099-01-01\","
-                                + "\"licenceDocumentUrl\":\"https://docs.example.com/dl.pdf\"}"))
+        mvc.perform(multipart(HttpMethod.PUT, "/api/users/me/licence")
+                        .file(new MockMultipartFile("file", "dl.pdf", "application/pdf", "%PDF-1.7".getBytes()))
+                        .param("licenceNumber", "DL-1").param("licenceExpiry", "2099-01-01"))
                 .andExpect(status().isOk());
     }
 
     @Test
     @WithMockUser(roles = "TOURIST")
     void submitLicence_asTourist_isForbidden() throws Exception {
-        mvc.perform(put("/api/users/me/licence").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"licenceNumber\":\"DL-1\",\"licenceExpiry\":\"2099-01-01\","
-                                + "\"licenceDocumentUrl\":\"https://docs.example.com/dl.pdf\"}"))
+        mvc.perform(multipart(HttpMethod.PUT, "/api/users/me/licence")
+                        .file(new MockMultipartFile("file", "dl.pdf", "application/pdf", "%PDF-1.7".getBytes()))
+                        .param("licenceNumber", "DL-1").param("licenceExpiry", "2099-01-01"))
                 .andExpect(status().isForbidden());
         verifyNoMoreInteractions(userService);
+    }
+
+    @Test
+    @WithMockUser(username = "g@example.com", roles = "GUIDE")
+    void submitLicence_withoutExpiry_isBadRequest() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+
+        mvc.perform(multipart(HttpMethod.PUT, "/api/users/me/licence")
+                        .file(new MockMultipartFile("file", "dl.pdf", "application/pdf", "%PDF-1.7".getBytes()))
+                        .param("licenceNumber", "DL-1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "g@example.com", roles = "GUIDE")
+    void licenceDocument_forOwner_isServedInline() throws Exception {
+        stubCurrentUser(Role.GUIDE);
+        when(userService.getLicenceDocument(any(), any())).thenReturn(
+                new LicenceDocumentDownload(new ByteArrayResource("%PDF-1.7".getBytes()), "licence.pdf", "application/pdf"));
+
+        mvc.perform(get("/api/users/1/licence-document"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("inline")));
+    }
+
+    @Test
+    @WithMockUser(username = "t@example.com", roles = "TOURIST")
+    void licenceDocument_forSomeoneElse_isForbidden() throws Exception {
+        stubCurrentUser(Role.TOURIST);
+        when(userService.getLicenceDocument(any(), any())).thenThrow(new AccessDeniedException("no"));
+
+        mvc.perform(get("/api/users/2/licence-document")).andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "a@example.com", roles = "ADMIN")
+    void licenceDocument_whenNoneUploaded_isNotFound() throws Exception {
+        stubCurrentUser(Role.ADMIN);
+        when(userService.getLicenceDocument(any(), any()))
+                .thenThrow(new com.tourlk.exception.ResourceNotFoundException("none"));
+
+        mvc.perform(get("/api/users/2/licence-document")).andExpect(status().isNotFound());
     }
 
     @Test

@@ -8,10 +8,9 @@ import com.tourlk.enums.NotificationType;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.VehicleStatus;
 import com.tourlk.enums.VehicleType;
-import com.tourlk.enums.VerificationStatus;
 import com.tourlk.exception.InvalidDateRangeException;
 import com.tourlk.exception.InvalidStatusTransitionException;
-import com.tourlk.exception.LicenceNotVerifiedException;
+import com.tourlk.util.LicenceRules;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.VehicleRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,9 +39,9 @@ public class VehicleServiceImpl implements VehicleService {
 
     @Override
     public VehicleResponseDto createVehicle(VehicleRequestDto request, User currentUser) {
-        if (currentUser.getRole() == Role.DRIVER && currentUser.getVerificationStatus() != VerificationStatus.VERIFIED) {
-            throw new LicenceNotVerifiedException(
-                    "You must be a verified driver before you can register a vehicle");
+        if (currentUser.getRole() == Role.DRIVER) {
+            LicenceRules.assertVerifiedAndCurrent(currentUser,
+                    "You must be a verified driver before you can register a vehicle", LocalDate.now());
         }
 
         assertMaintenanceDates(request);

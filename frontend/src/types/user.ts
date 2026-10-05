@@ -18,6 +18,10 @@ export interface UserResponseDto {
   licenceNumber: string | null
   licenceExpiry: string | null
   licenceDocumentUrl: string | null
+  licenceDocumentUploaded: boolean
+  licenceExpired: boolean
+  // Days until licenceExpiry (negative once expired); null when there is no expiry date
+  licenceDaysUntilExpiry: number | null
   licenceRejectionReason: string | null
   licenceVerifiedAt: string | null
 }
@@ -35,9 +39,12 @@ export interface ChangePasswordRequestDto {
   newPassword: string
 }
 
-// Matches com.tourlk.dto.LicenceSubmitRequestDto
+// Sent as multipart/form-data (see com.tourlk.dto.LicenceSubmitRequestDto + the `file` part)
 export interface LicenceSubmitRequestDto {
   licenceNumber: string
   licenceExpiry: string
-  licenceDocumentUrl: string
+  file: File
 }
+
+export const LICENCE_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+export const LICENCE_MAX_BYTES = 5 * 1024 * 1024

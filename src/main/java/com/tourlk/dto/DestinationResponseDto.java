@@ -49,7 +49,11 @@ public class DestinationResponseDto {
 
     /** Set only while TEMPORARILY_CLOSED. */
     private String closureReason;
+    private LocalDate closureFrom;
     private LocalDate closureUntil;
+
+    /** Only set on the response to closing a destination: what happened to bookings in the closure window. */
+    private ClosureSummaryDto closureSummary;
 
     /** Straight-line distance from the searched point; only set on nearby searches. */
     private Double distanceKm;

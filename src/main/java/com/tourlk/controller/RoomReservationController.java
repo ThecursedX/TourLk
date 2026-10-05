@@ -1,5 +1,6 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.CancellationPreviewResponseDto;
 import com.tourlk.dto.RoomReservationRequestDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.entity.User;
@@ -23,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Room reservation creation, confirmation and cancellation workflow.
+ * Room reservation creation and cancellation workflow; confirmation happens on payment.
  * Mirrors the Booking module's conventions.
  */
 @RestController
@@ -44,16 +45,17 @@ public class RoomReservationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PutMapping("/{id}/confirm")
-    @PreAuthorize("hasAnyRole('ADMIN','HOTEL_PARTNER')")
-    public ResponseEntity<RoomReservationResponseDto> confirm(@PathVariable Long id, Authentication authentication) {
-        return ResponseEntity.ok(roomReservationService.confirmReservation(id, currentUser(authentication)));
-    }
-
     @PutMapping("/{id}/cancel")
     @PreAuthorize("hasAnyRole('TOURIST','ADMIN','HOTEL_PARTNER')")
     public ResponseEntity<RoomReservationResponseDto> cancel(@PathVariable Long id, Authentication authentication) {
         return ResponseEntity.ok(roomReservationService.cancelReservation(id, currentUser(authentication)));
+    }
+
+    @GetMapping("/{id}/cancellation-preview")
+    @PreAuthorize("hasAnyRole('TOURIST','ADMIN','HOTEL_PARTNER')")
+    public ResponseEntity<CancellationPreviewResponseDto> cancellationPreview(@PathVariable Long id,
+                                                                               Authentication authentication) {
+        return ResponseEntity.ok(roomReservationService.getCancellationPreview(id, currentUser(authentication)));
     }
 
     @PutMapping("/{id}/complete")

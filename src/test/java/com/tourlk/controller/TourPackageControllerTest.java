@@ -67,6 +67,8 @@ class TourPackageControllerTest {
     private TourPackageService tourPackageService;
     @MockBean
     private UserService userService;
+    @MockBean
+    private com.tourlk.service.PackageAddOnService packageAddOnService;
 
     private void stubCurrentUser(Role role) {
         when(userService.getByEmail(any()))

@@ -5,7 +5,7 @@ import { getDestinationById } from '../../api/destinationApi'
 import { browseAccommodations } from '../../api/accommodationApi'
 import AccommodationCard from '../../components/accommodations/AccommodationCard'
 import DestinationClosureBanner from '../../components/destinations/DestinationClosureBanner'
-import DestinationMap from '../../components/destinations/DestinationMap'
+import LocationMap from '../../components/maps/LocationMap'
 import Card from '../../components/ui/Card'
 import { formatProvince, hasCoordinates, type DestinationResponseDto } from '../../types/destination'
 import type { AccommodationResponseDto } from '../../types/accommodation'
@@ -38,7 +38,7 @@ export default function DestinationDetailPage() {
   useEffect(() => {
     if (!id) return
     setAccommodationsLoading(true)
-    browseAccommodations(Number(id))
+    browseAccommodations({ locationId: Number(id) })
         .then(setAccommodations)
         .catch(() => setAccommodations([]))
         .finally(() => setAccommodationsLoading(false))
@@ -138,16 +138,16 @@ export default function DestinationDetailPage() {
           {hasCoordinates(destination) && (
               <div className="border-t border-slate-200 pt-4">
                 <h2 className="mb-2 text-xs uppercase text-slate-500">Location</h2>
-                <DestinationMap
+                <LocationMap
                     name={destination.name}
-                    latitude={destination.latitude as number}
-                    longitude={destination.longitude as number}
+                    latitude={destination.latitude}
+                    longitude={destination.longitude}
                 />
               </div>
           )}
 
           <div className="flex gap-4 border-t border-slate-200 pt-4 text-sm font-medium text-blue-600">
-            <Link to="/packages" className="hover:underline">
+            <Link to={`/packages?destinationId=${destination.id}`} className="hover:underline">
               Browse tour packages &rarr;
             </Link>
           </div>

@@ -52,6 +52,8 @@ class VehicleControllerTest {
     private VehicleService vehicleService;
     @MockBean
     private UserService userService;
+    @MockBean
+    private com.tourlk.service.VehicleHireService vehicleHireService;
 
     private void stubCurrentUser(Role role) {
         when(userService.getByEmail(any()))

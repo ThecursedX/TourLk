@@ -1,4 +1,5 @@
 import axiosClient from './axiosClient'
+import type { CancellationPreviewResponseDto } from '../types/booking'
 import type { RoomReservationRequestDto, RoomReservationResponseDto } from '../types/accommodation'
 
 export function createReservation(data: RoomReservationRequestDto) {
@@ -19,8 +20,10 @@ export function getReservationsByRoom(roomId: number) {
     .then((res) => res.data)
 }
 
-export function confirmReservation(id: number) {
-  return axiosClient.put<RoomReservationResponseDto>(`/reservations/${id}/confirm`).then((res) => res.data)
+export function getReservationCancellationPreview(id: number) {
+  return axiosClient
+    .get<CancellationPreviewResponseDto>(`/reservations/${id}/cancellation-preview`)
+    .then((res) => res.data)
 }
 
 export function cancelReservation(id: number) {

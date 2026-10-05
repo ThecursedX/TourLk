@@ -1,5 +1,6 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.ClosureImpactDto;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
 import com.tourlk.entity.Destination;
@@ -26,8 +27,15 @@ public interface DestinationService {
     /** DRAFT / PENDING_REVIEW -> PUBLISHED. */
     DestinationResponseDto publishDestination(Long id);
 
-    /** PUBLISHED -> TEMPORARILY_CLOSED with a reason and an optional last day of closure. */
-    DestinationResponseDto closeTemporarily(Long id, String reason, LocalDate until);
+    /**
+     * PUBLISHED -> TEMPORARILY_CLOSED (immediately) with a reason and an optional first and last day.
+     * Active bookings whose trip overlaps the window are cancelled and fully refunded; the outcome
+     * is in the response's {@code closureSummary}.
+     */
+    DestinationResponseDto closeTemporarily(Long id, String reason, LocalDate from, LocalDate until);
+
+    /** Read-only preview: how many active bookings closing for this window would cancel and refund. */
+    ClosureImpactDto previewClosureImpact(Long id, LocalDate from, LocalDate until);
 
     /** TEMPORARILY_CLOSED -> PUBLISHED, clearing the closure details. */
     DestinationResponseDto reopenDestination(Long id);

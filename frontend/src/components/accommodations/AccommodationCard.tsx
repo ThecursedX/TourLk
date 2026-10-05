@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AccommodationResponseDto } from '../../types/accommodation'
 import Card from '../ui/Card'
+import CardImage from '../ui/CardImage'
 import AccommodationStatusBadge from './AccommodationStatusBadge'
 
 interface AccommodationCardProps {
@@ -16,16 +17,7 @@ export default function AccommodationCard({ accommodation, footer }: Accommodati
 
   return (
     <Card className="flex flex-col gap-3" attention={accommodation.status === 'PENDING_APPROVAL'}>
-      {accommodation.imageUrls?.[0] && (
-        <img
-          src={accommodation.imageUrls[0]}
-          alt=""
-          className="h-36 w-full rounded-lg border border-slate-200 object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none'
-          }}
-        />
-      )}
+      <CardImage urls={accommodation.imageUrls ?? []} alt={accommodation.name} />
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">{accommodation.name}</h3>
         <AccommodationStatusBadge status={accommodation.status} />

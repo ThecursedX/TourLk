@@ -22,6 +22,11 @@ export function getBookingsByPackage(packageId: number) {
   return axiosClient.get<BookingResponseDto[]>(`/bookings/package/${packageId}`).then((res) => res.data)
 }
 
+/** GUIDE: every booking on the packages the current guide created, newest first. */
+export function getMyPackageBookings() {
+  return axiosClient.get<BookingResponseDto[]>('/bookings/my-packages').then((res) => res.data)
+}
+
 export function confirmBooking(id: number) {
   return axiosClient.put<BookingResponseDto>(`/bookings/${id}/confirm`).then((res) => res.data)
 }

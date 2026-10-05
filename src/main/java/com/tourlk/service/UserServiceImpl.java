@@ -2,6 +2,7 @@ package com.tourlk.service;
 
 import com.tourlk.dto.AuthResponseDto;
 import com.tourlk.dto.ChangePasswordRequestDto;
+import com.tourlk.dto.LicenceDocumentDownload;
 import com.tourlk.dto.LicenceSubmitRequestDto;
 import com.tourlk.dto.UpdateProfileRequestDto;
 import com.tourlk.dto.UserResponseDto;
@@ -27,6 +28,7 @@ import com.tourlk.repo.UserRepository;
 import com.tourlk.repo.VehicleHireRepository;
 import com.tourlk.repo.VehicleRepository;
 import com.tourlk.security.JwtUtil;
+import com.tourlk.util.LicenceRules;
 import com.stripe.exception.StripeException;
 import com.stripe.model.PaymentMethod;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +38,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.access.AccessDeniedException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +69,7 @@ public class UserServiceImpl implements UserService {
     private final VehicleRepository vehicleRepository;
     private final AccommodationRepository accommodationRepository;
     private final TourPackageRepository tourPackageRepository;
+    private final LicenceDocumentStorage licenceDocumentStorage;
 
     @Override
     public User getById(Long id) {
@@ -193,6 +201,51 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+@Transactional
+public UserResponseDto promoteToAdmin(Long id, User currentUser) {
+    User user = getById(id);
+    if (user.getRole() == Role.ADMIN) {
+        throw new BadRequestException("This user is already an admin");
+    }
+    if (user.getStatus() != UserStatus.ACTIVE) {
+        throw new BadRequestException("Only active accounts can be promoted to admin");
+    }
+    user.setRole(Role.ADMIN);
+    User saved = userRepository.save(user);
+
+    notificationService.notify(saved, NotificationType.ACCOUNT_PROFILE_UPDATED, "You are now an admin",
+            "An administrator gave your account admin access. Sign out and back in to see the admin pages.",
+            "/profile");
+    return toResponse(saved);
+}
+
+@Override
+@Transactional
+public UserResponseDto demoteAdmin(Long id, User currentUser) {
+    if (currentUser.getId().equals(id)) {
+        throw new BadRequestException("You cannot change your own role");
+    }
+    User user = getById(id);
+    if (user.getRole() != Role.ADMIN) {
+        throw new BadRequestException("This user is not an admin");
+    }
+    User mainAdmin = userRepository.findFirstByRoleOrderByIdAsc(Role.ADMIN).orElse(null);
+    if (mainAdmin != null && mainAdmin.getId().equals(id)) {
+        throw new BadRequestException("The main admin cannot be demoted");
+    }
+    if (user.getStatus() == UserStatus.ACTIVE
+            && userRepository.countByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE) <= 1) {
+        throw new BadRequestException("At least one active admin must remain");
+    }
+    user.setRole(Role.TOURIST);
+    User saved = userRepository.save(user);
+
+    notificationService.notify(saved, NotificationType.ACCOUNT_PROFILE_UPDATED, "Admin access removed",
+            "Your admin access was removed. Your account is now a tourist account.", "/profile");
+    return toResponse(saved);
+}
+
+    @Override
     @Transactional
     public UserResponseDto reactivateUser(Long id) {
         User user = getById(id);
@@ -280,27 +333,75 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponseDto submitLicence(User currentUser, LicenceSubmitRequestDto request) {
+    public UserResponseDto submitLicence(User currentUser, LicenceSubmitRequestDto request, MultipartFile file) {
         if (currentUser.getRole() != Role.GUIDE && currentUser.getRole() != Role.DRIVER) {
             throw new BadRequestException("Only guides and drivers can submit licence details");
         }
 
         User user = getById(currentUser.getId());
+        LocalDate today = LocalDate.now();
+        if (user.getVerificationStatus() == VerificationStatus.VERIFIED && !LicenceRules.canRenew(user, today)) {
+            throw new BadRequestException("Your licence is still valid until " + user.getLicenceExpiry());
+        }
+
+        licenceDocumentStorage.validate(file);
+        String oldPath = user.getLicenceDocumentPath();
+        String newPath = licenceDocumentStorage.store(user.getId(), file);
+
         user.setLicenceNumber(request.getLicenceNumber().trim());
         user.setLicenceExpiry(request.getLicenceExpiry());
-        user.setLicenceDocumentUrl(request.getLicenceDocumentUrl().trim());
+        user.setLicenceDocumentPath(newPath);
+        user.setLicenceDocumentUrl(null);
         user.setVerificationStatus(VerificationStatus.PENDING);
         user.setLicenceRejectionReason(null);
         user.setLicenceVerifiedById(null);
         user.setLicenceVerifiedAt(null);
 
-        User saved = userRepository.save(user);
+        User saved;
+        try {
+            saved = userRepository.save(user);
+        } catch (RuntimeException e) {
+            licenceDocumentStorage.deleteQuietly(newPath);
+            throw e;
+        }
+
+        if (oldPath != null) {
+            runAfterCommit(() -> licenceDocumentStorage.deleteQuietly(oldPath));
+        }
 
         notificationService.notifyAdmins(NotificationType.LICENCE_SUBMITTED, "Licence submitted for verification",
                 saved.getName() + " (" + saved.getRole() + ") submitted their licence for verification",
                 "/admin/verifications");
 
         return toResponse(saved);
+    }
+
+    @Override
+    public LicenceDocumentDownload getLicenceDocument(Long userId, User requester) {
+        if (requester.getRole() != Role.ADMIN && !requester.getId().equals(userId)) {
+            throw new AccessDeniedException("You can only view your own licence document");
+        }
+        User user = getById(userId);
+        String path = user.getLicenceDocumentPath();
+        if (path == null) {
+            throw new ResourceNotFoundException("No licence document has been uploaded");
+        }
+        String contentType = licenceDocumentStorage.contentTypeOf(path);
+        String extension = path.substring(path.lastIndexOf('.'));
+        return new LicenceDocumentDownload(licenceDocumentStorage.load(path), "licence" + extension, contentType);
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
     }
 
     @Override
@@ -373,6 +474,9 @@ public class UserServiceImpl implements UserService {
                 .licenceNumber(user.getLicenceNumber())
                 .licenceExpiry(user.getLicenceExpiry())
                 .licenceDocumentUrl(user.getLicenceDocumentUrl())
+                .licenceDocumentUploaded(user.getLicenceDocumentPath() != null)
+                .licenceExpired(LicenceRules.isExpired(user, LocalDate.now()))
+                .licenceDaysUntilExpiry(LicenceRules.daysUntilExpiry(user, LocalDate.now()))
                 .licenceRejectionReason(user.getLicenceRejectionReason())
                 .licenceVerifiedAt(user.getLicenceVerifiedAt())
                 .build();

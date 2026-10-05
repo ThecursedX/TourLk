@@ -13,12 +13,14 @@ import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Invoice;
 import com.tourlk.entity.Payment;
 import com.tourlk.entity.User;
+import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.PayableType;
 import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.VehicleHireStatus;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.PaymentAmountMismatchException;
 import com.tourlk.exception.PaymentRequiredException;
@@ -43,6 +45,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -155,6 +158,84 @@ class PaymentServiceImplTest {
             ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
             verify(paymentRepository).save(paymentCaptor.capture());
             assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00");
+        }
+
+        @Test
+        void createPaymentIntent_roomReservation_chargesTheFrozenTotalNotTheLivePrice() {
+            // Stored 300.00 at reservation time; the room has since gone up to 90.00/night (would be 540.00).
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation("300.00", "90.00", AccommodationStatus.ACTIVE));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+            verify(paymentRepository).save(paymentCaptor.capture());
+            assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00");
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationWithoutFrozenTotal_fallsBackToLivePrice() {
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation(null, "50.00", AccommodationStatus.ACTIVE));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+            verify(paymentRepository).save(paymentCaptor.capture());
+            assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00"); // 50 x 3 x 2
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationOnInactiveProperty_isRefused() {
+            for (AccommodationStatus status : java.util.List.of(AccommodationStatus.INACTIVE,
+                    AccommodationStatus.ARCHIVED, AccommodationStatus.TEMPORARILY_UNAVAILABLE)) {
+                when(roomReservationService.getReservationById(20L, tourist))
+                        .thenReturn(frozenReservation("300.00", "50.00", status));
+                PaymentRequestDto request =
+                        new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+                assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
+                        .as("property status %s", status)
+                        .isInstanceOf(BadRequestException.class);
+            }
+            verify(paymentRepository, never()).save(any());
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationOnFullyBookedProperty_isAllowed() {
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation("300.00", "50.00", AccommodationStatus.FULLY_BOOKED));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            verify(paymentRepository).save(any(Payment.class));
         }
 
         @Test
@@ -274,9 +355,9 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void createPaymentIntent_bookingNotPending_throwsPaymentRequired() {
+        void createPaymentIntent_bookingCancelled_throwsPaymentRequired() {
             when(bookingService.getBookingById(10L, tourist))
-                    .thenReturn(booking(1L, BookingStatus.CONFIRMED, "100.00", 2));
+                    .thenReturn(booking(1L, BookingStatus.CANCELLED, "100.00", 2));
 
             PaymentRequestDto request = new PaymentRequestDto(PayableType.BOOKING, 10L, new BigDecimal("200.00"), null);
 
@@ -327,7 +408,7 @@ class PaymentServiceImplTest {
             paymentService.handlePaymentSucceeded("pi_1");
 
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
-            verify(bookingService).confirmBooking(10L);
+            verify(bookingService).confirmBookingAfterPayment(10L);
             verify(invoiceRepository).save(any(Invoice.class));
         }
 
@@ -341,7 +422,7 @@ class PaymentServiceImplTest {
             paymentService.handlePaymentSucceeded("pi_1");
 
             // second delivery is a no-op: no double-confirm, no second invoice
-            verify(bookingService, times(1)).confirmBooking(10L);
+            verify(bookingService, times(1)).confirmBookingAfterPayment(10L);
             verify(invoiceRepository, times(1)).save(any(Invoice.class));
             verify(paymentRepository, times(1)).save(any(Payment.class));
         }
@@ -371,25 +452,28 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void handlePaymentSucceeded_confirmationFails_stillMarksPaidButSkipsInvoice() {
+        void handlePaymentSucceeded_confirmationFails_stillMarksPaidAndGeneratesInvoice() {
             Payment payment = pendingPayment(PayableType.BOOKING, 10L, "pi_1");
             when(paymentRepository.findByStripePaymentIntentId("pi_1")).thenReturn(Optional.of(payment));
             when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> inv.getArgument(0));
-            when(bookingService.confirmBooking(10L)).thenThrow(new RuntimeException("booking was cancelled"));
+            doThrow(new RuntimeException("booking was cancelled")).when(bookingService).confirmBookingAfterPayment(10L);
 
             paymentService.handlePaymentSucceeded("pi_1"); // swallowed — webhook must still be ACKed
 
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
-            verify(invoiceRepository, never()).save(any());
+            verify(invoiceRepository).save(any(Invoice.class));
         }
 
         @Test
-        void handlePaymentSucceeded_unknownIntent_throwsResourceNotFound() {
+        void handlePaymentSucceeded_unknownIntent_isIgnoredSoStripeStopsRetrying() {
             when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> paymentService.handlePaymentSucceeded("pi_missing"))
-                    .isInstanceOf(ResourceNotFoundException.class);
+            paymentService.handlePaymentSucceeded("pi_missing"); // must not throw
+
+            verify(bookingService, never()).confirmBookingAfterPayment(any());
+            verify(invoiceRepository, never()).save(any());
         }
+
     }
 
     // ------------------------------------------------------------------
@@ -423,11 +507,11 @@ class PaymentServiceImplTest {
         }
 
         @Test
-        void handlePaymentFailed_unknownIntent_throwsResourceNotFound() {
+        void handlePaymentFailed_unknownIntent_isIgnoredSoStripeStopsRetrying() {
             when(paymentRepository.findByStripePaymentIntentId("pi_missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> paymentService.handlePaymentFailed("pi_missing"))
-                    .isInstanceOf(ResourceNotFoundException.class);
+            paymentService.handlePaymentFailed("pi_missing"); // must not throw
+            verify(paymentRepository, never()).save(any());
         }
     }
 
@@ -516,8 +600,18 @@ class PaymentServiceImplTest {
                         .id(3L)
                         .roomType("Deluxe")
                         .pricePerNight(new BigDecimal(pricePerNight))
+                        .accommodationStatus(AccommodationStatus.ACTIVE)
                         .build())
                 .build();
+    }
+
+    private RoomReservationResponseDto frozenReservation(String frozenTotal, String livePricePerNight,
+                                                         AccommodationStatus propertyStatus) {
+        RoomReservationResponseDto dto = reservation(1L, RoomReservationStatus.PENDING, livePricePerNight, 2,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 4));
+        dto.setTotalPrice(frozenTotal == null ? null : new BigDecimal(frozenTotal));
+        dto.getRoom().setAccommodationStatus(propertyStatus);
+        return dto;
     }
 
     private VehicleHireResponseDto hire(Long touristId, VehicleHireStatus status, String totalPrice) {
@@ -553,4 +647,127 @@ class PaymentServiceImplTest {
         when(intent.getClientSecret()).thenReturn(clientSecret);
         return intent;
     }
+
+    // ------------------------------------------------------------------
+    // deletePayment / deletePayments (admin clean-up)
+    // ------------------------------------------------------------------
+
+    @Nested
+    class DeletePayment {
+
+        private User admin = User.builder().id(9L).role(Role.ADMIN).build();
+
+        private Payment payment(Long id, PaymentStatus status, String intentId) {
+            return Payment.builder().id(id).payer(tourist).payableType(PayableType.BOOKING).payableId(5L)
+                    .amount(new BigDecimal("100.00")).currency("usd").stripePaymentIntentId(intentId)
+                    .status(status).build();
+        }
+
+        @Test
+        void failedAndPendingWithoutIntent_areDeleted() {
+            Payment failed = payment(1L, PaymentStatus.FAILED, "pi_f");
+            Payment pending = payment(2L, PaymentStatus.PENDING, null);
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(failed));
+            when(paymentRepository.findById(2L)).thenReturn(Optional.of(pending));
+            when(invoiceRepository.findByPaymentId(any())).thenReturn(Optional.empty());
+
+            paymentService.deletePayment(1L, admin);
+            paymentService.deletePayment(2L, admin);
+
+            verify(paymentRepository).delete(failed);
+            verify(paymentRepository).delete(pending);
+            verify(bookingService, never()).cancelBooking(any(), any());
+        }
+
+        @Test
+        void refunded_isDeletedTogetherWithItsInvoice() {
+            Payment refunded = payment(3L, PaymentStatus.REFUNDED, "pi_r");
+            Invoice invoice = Invoice.builder().id(30L).payment(refunded).build();
+            when(paymentRepository.findById(3L)).thenReturn(Optional.of(refunded));
+            when(invoiceRepository.findByPaymentId(3L)).thenReturn(Optional.of(invoice));
+
+            paymentService.deletePayment(3L, admin);
+
+            org.mockito.InOrder order = org.mockito.Mockito.inOrder(invoiceRepository, paymentRepository);
+            order.verify(invoiceRepository).delete(invoice);
+            order.verify(paymentRepository).delete(refunded);
+        }
+
+        @Test
+        void succeededAndRefundPending_areRejectedWithTheClearMessage() {
+            for (PaymentStatus status : new PaymentStatus[] {PaymentStatus.SUCCEEDED, PaymentStatus.REFUND_PENDING}) {
+                Payment protectedPayment = payment(4L, status, "pi_s");
+                when(paymentRepository.findById(4L)).thenReturn(Optional.of(protectedPayment));
+
+                assertThatThrownBy(() -> paymentService.deletePayment(4L, admin))
+                        .isInstanceOf(InvalidStatusTransitionException.class)
+                        .hasMessage("Payments that have succeeded or have a refund in progress cannot be deleted.");
+                verify(paymentRepository, never()).delete(protectedPayment);
+            }
+        }
+
+        @Test
+        void pending_alreadySucceededInStripe_abortsTheDelete() throws Exception {
+            Payment pending = payment(5L, PaymentStatus.PENDING, "pi_paid");
+            when(paymentRepository.findById(5L)).thenReturn(Optional.of(pending));
+            com.stripe.model.PaymentIntent intent = org.mockito.Mockito.mock(com.stripe.model.PaymentIntent.class);
+            when(intent.getStatus()).thenReturn("succeeded");
+
+            try (org.mockito.MockedStatic<com.stripe.model.PaymentIntent> stripe =
+                         org.mockito.Mockito.mockStatic(com.stripe.model.PaymentIntent.class)) {
+                stripe.when(() -> com.stripe.model.PaymentIntent.retrieve("pi_paid")).thenReturn(intent);
+
+                assertThatThrownBy(() -> paymentService.deletePayment(5L, admin))
+                        .isInstanceOf(InvalidStatusTransitionException.class)
+                        .hasMessageContaining("refresh");
+            }
+            verify(paymentRepository, never()).delete(pending);
+            verify(intent, never()).cancel();
+        }
+
+        @Test
+        void pending_openInStripe_isCancelledThenDeleted() throws Exception {
+            Payment pending = payment(6L, PaymentStatus.PENDING, "pi_open");
+            when(paymentRepository.findById(6L)).thenReturn(Optional.of(pending));
+            when(invoiceRepository.findByPaymentId(6L)).thenReturn(Optional.empty());
+            com.stripe.model.PaymentIntent intent = org.mockito.Mockito.mock(com.stripe.model.PaymentIntent.class);
+            when(intent.getStatus()).thenReturn("requires_payment_method");
+
+            try (org.mockito.MockedStatic<com.stripe.model.PaymentIntent> stripe =
+                         org.mockito.Mockito.mockStatic(com.stripe.model.PaymentIntent.class)) {
+                stripe.when(() -> com.stripe.model.PaymentIntent.retrieve("pi_open")).thenReturn(intent);
+
+                paymentService.deletePayment(6L, admin);
+            }
+            verify(intent).cancel();
+            verify(paymentRepository).delete(pending);
+        }
+
+        @Test
+        void bulk_skipsProtectedAndMissingRows_andDeletesTheRest() {
+            Payment ok = payment(1L, PaymentStatus.FAILED, "pi_f");
+            Payment succeeded = payment(2L, PaymentStatus.SUCCEEDED, "pi_s");
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(ok));
+            when(paymentRepository.findById(2L)).thenReturn(Optional.of(succeeded));
+            when(paymentRepository.findById(3L)).thenReturn(Optional.empty());
+            when(invoiceRepository.findByPaymentId(1L)).thenReturn(Optional.empty());
+
+            var result = paymentService.deletePayments(java.util.List.of(1L, 2L, 3L, 1L), admin);
+
+            assertThat(result.getDeleted()).isEqualTo(1);
+            assertThat(result.getSkipped()).extracting(s -> s.getId()).containsExactly(2L, 3L);
+            assertThat(result.getSkipped().get(0).getReason()).contains("cannot be deleted");
+            verify(paymentRepository).delete(ok);
+            verify(paymentRepository, never()).delete(succeeded);
+        }
+
+        @Test
+        void bulk_moreThan200_isRejected() {
+            java.util.List<Long> ids = java.util.stream.LongStream.rangeClosed(1, 201).boxed().toList();
+
+            assertThatThrownBy(() -> paymentService.deletePayments(ids, admin))
+                    .isInstanceOf(com.tourlk.exception.BadRequestException.class);
+        }
+    }
+
 }

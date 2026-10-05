@@ -86,6 +86,8 @@ class TourPackageServiceImplTest {
     private ReviewRepository reviewRepository;
     @Mock
     private BookingRepository bookingRepository;
+    @Mock
+    private com.tourlk.repo.PackageAddOnRepository packageAddOnRepository;
     /** Real policy (75 / 200 USD per day) — it's pure logic, nothing to mock. */
     @Spy
     private BudgetTierPolicy budgetTierPolicy =
@@ -166,6 +168,26 @@ class TourPackageServiceImplTest {
             assertThatThrownBy(() -> service.createPackage(request(), owner))
                     .isInstanceOf(LicenceNotVerifiedException.class);
             verify(tourPackageRepository, never()).save(any());
+        }
+
+        @Test
+        void createPackage_byGuideWithExpiredLicence_throwsLicenceNotVerified() {
+            owner.setVerificationStatus(VerificationStatus.VERIFIED);
+            owner.setLicenceExpiry(java.time.LocalDate.now().minusDays(1));
+
+            assertThatThrownBy(() -> service.createPackage(request(), owner))
+                    .isInstanceOf(LicenceNotVerifiedException.class)
+                    .hasMessage("Your licence expired on " + owner.getLicenceExpiry() + ". Renew it on your profile.");
+            verify(tourPackageRepository, never()).save(any());
+        }
+
+        @Test
+        void createPackage_byGuideExpiringToday_isStillAllowed() {
+            owner.setVerificationStatus(VerificationStatus.VERIFIED);
+            owner.setLicenceExpiry(java.time.LocalDate.now());
+            expectSaveEchoed();
+
+            assertThat(service.createPackage(request(), owner).getStatus()).isEqualTo(PackageStatus.DRAFT);
         }
 
         @Test

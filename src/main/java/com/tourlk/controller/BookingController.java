@@ -48,9 +48,9 @@ public class BookingController {
     }
 
     @PutMapping("/{id}/confirm")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<BookingResponseDto> confirm(@PathVariable Long id) {
-        return ResponseEntity.ok(bookingService.confirmBooking(id));
+    @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
+    public ResponseEntity<BookingResponseDto> confirm(@PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(bookingService.confirmBooking(id, currentUser(authentication)));
     }
 
     @PutMapping("/{id}/reschedule")
@@ -105,6 +105,12 @@ public class BookingController {
     public ResponseEntity<List<BookingResponseDto>> mine(Authentication authentication) {
         User currentUser = currentUser(authentication);
         return ResponseEntity.ok(bookingService.getBookingsByTourist(currentUser.getId()));
+    }
+
+    @GetMapping("/my-packages")
+    @PreAuthorize("hasRole('GUIDE')")
+    public ResponseEntity<List<BookingResponseDto>> myPackages(Authentication authentication) {
+        return ResponseEntity.ok(bookingService.getBookingsForGuide(currentUser(authentication)));
     }
 
     @GetMapping("/package/{packageId}")

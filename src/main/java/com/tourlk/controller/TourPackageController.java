@@ -3,11 +3,15 @@ package com.tourlk.controller;
 import com.tourlk.dto.PackageSearchCriteria;
 import com.tourlk.dto.RejectPackageRequestDto;
 import com.tourlk.dto.TourPackageRequestDto;
+import com.tourlk.dto.AddOnAvailabilityDto;
+import com.tourlk.dto.PackageAddOnResponseDto;
+import com.tourlk.dto.PackageAddOnsRequestDto;
 import com.tourlk.dto.TourPackageResponseDto;
 import com.tourlk.entity.User;
 import com.tourlk.enums.BudgetTier;
 import com.tourlk.enums.PackageSort;
 import com.tourlk.enums.PackageStatus;
+import com.tourlk.service.PackageAddOnService;
 import com.tourlk.service.TourPackageService;
 import com.tourlk.service.UserService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,6 +50,7 @@ public class TourPackageController {
 
     private final TourPackageService tourPackageService;
     private final UserService userService;
+    private final PackageAddOnService packageAddOnService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
@@ -138,6 +143,30 @@ public class TourPackageController {
     @GetMapping("/{id}")
     public ResponseEntity<TourPackageResponseDto> getById(@PathVariable Long id, Authentication authentication) {
         return ResponseEntity.ok(tourPackageService.getPackageById(id, optionalCurrentUser(authentication)));
+    }
+
+    @GetMapping("/{id}/add-ons")
+    public ResponseEntity<List<PackageAddOnResponseDto>> getAddOns(@PathVariable Long id,
+                                                                    Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.getAddOns(id, optionalCurrentUser(authentication)));
+    }
+
+    @GetMapping("/{id}/add-ons/availability")
+    public ResponseEntity<List<AddOnAvailabilityDto>> addOnAvailability(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate travelDate,
+            Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.getAvailability(id, travelDate,
+                optionalCurrentUser(authentication)));
+    }
+
+    @PutMapping("/{id}/add-ons")
+    @PreAuthorize("hasAnyRole('ADMIN','GUIDE')")
+    public ResponseEntity<List<PackageAddOnResponseDto>> replaceAddOns(
+            @PathVariable Long id, @Valid @RequestBody PackageAddOnsRequestDto request,
+            Authentication authentication) {
+        return ResponseEntity.ok(packageAddOnService.replaceAddOns(id, request.getAddOns(),
+                currentUser(authentication)));
     }
 
     @GetMapping("/admin")

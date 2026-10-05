@@ -76,13 +76,16 @@ export default function MyHiresPage() {
             hire={hire}
             footer={
               <div className="flex flex-col gap-2">
+                {hire.bookingId && (
+                  <p className="text-xs text-slate-500">Paid and managed with your package booking.</p>
+                )}
                 <div className="flex gap-2">
-                  {hire.status === 'PENDING' && (
+                  {hire.status === 'PENDING' && !hire.bookingId && (
                     <Link to={`/checkout/vehicle_hire/${hire.id}`}>
                       <Button disabled={busyId === hire.id}>Pay Now</Button>
                     </Link>
                   )}
-                  {CANCELLABLE.has(hire.status) && (
+                  {CANCELLABLE.has(hire.status) && !hire.bookingId && (
                     <Button
                       variant="secondary"
                       disabled={busyId === hire.id}

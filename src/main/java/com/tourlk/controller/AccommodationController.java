@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -108,13 +110,20 @@ public class AccommodationController {
 
     @GetMapping
     public ResponseEntity<List<AccommodationResponseDto>> browse(
-            @RequestParam(required = false) Long locationId) {
-        return ResponseEntity.ok(accommodationService.getAllActive(locationId));
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Integer minStars,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(required = false) String sort) {
+        return ResponseEntity.ok(
+                accommodationService.getAllActive(locationId, q, minStars, minPrice, maxPrice, sort));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<AccommodationResponseDto> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(accommodationService.getById(id));
+    public ResponseEntity<AccommodationResponseDto> getById(@PathVariable Long id, Authentication authentication) {
+        // Public endpoint: authentication is null (or anonymous) for visitors who aren't logged in.
+        return ResponseEntity.ok(accommodationService.getById(id, currentUserOrNull(authentication)));
     }
 
     @GetMapping("/pending-approval")
@@ -137,6 +146,14 @@ public class AccommodationController {
                                                      Authentication authentication) {
         RoomResponseDto response = accommodationService.addRoom(id, request, currentUser(authentication));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private User currentUserOrNull(Authentication authentication) {
+        if (authentication == null || authentication instanceof AnonymousAuthenticationToken
+                || !authentication.isAuthenticated()) {
+            return null;
+        }
+        return currentUser(authentication);
     }
 
     private User currentUser(Authentication authentication) {

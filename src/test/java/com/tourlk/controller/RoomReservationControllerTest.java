@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RoomReservationControllerTest {
 
     private static final String CREATE_BODY = """
-            {"roomId":1,"checkInDate":"2030-01-01","checkOutDate":"2030-01-04","numberOfRooms":1}
+            {"roomId":1,"checkInDate":"2030-01-01","checkOutDate":"2030-01-04","numberOfRooms":1,"numberOfGuests":2}
             """;
 
     @Autowired
@@ -81,30 +81,50 @@ class RoomReservationControllerTest {
         verifyNoInteractions(roomReservationService);
     }
 
-    // --- PUT /api/reservations/{id}/confirm : hasAnyRole('ADMIN','HOTEL_PARTNER') ---
+    // --- PUT /api/reservations/{id}/confirm : removed — payment is the only way to confirm ---
 
     @Test
     @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
-    void confirm_asHotelPartner_returnsOk() throws Exception {
-        stubCurrentUser(Role.HOTEL_PARTNER);
-        when(roomReservationService.confirmReservation(anyLong(), any())).thenReturn(sample());
-
-        mvc.perform(put("/api/reservations/5/confirm")).andExpect(status().isOk());
+    void confirm_endpointNoLongerExists() throws Exception {
+        mvc.perform(put("/api/reservations/5/confirm"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
+        verifyNoInteractions(roomReservationService);
     }
 
     @Test
-    @WithMockUser(username = "a@example.com", roles = "ADMIN")
-    void confirm_asAdmin_returnsOk() throws Exception {
-        stubCurrentUser(Role.ADMIN);
-        when(roomReservationService.confirmReservation(anyLong(), any())).thenReturn(sample());
+    @WithMockUser(username = "u@example.com", roles = "TOURIST")
+    void create_withoutGuestCount_isBadRequest() throws Exception {
+        stubCurrentUser(Role.TOURIST);
+        String body = """
+                {"roomId":1,"checkInDate":"2030-01-01","checkOutDate":"2030-01-04","numberOfRooms":1}
+                """;
 
-        mvc.perform(put("/api/reservations/5/confirm")).andExpect(status().isOk());
+        mvc.perform(post("/api/reservations").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(roomReservationService);
+    }
+
+    // --- GET /api/reservations/{id}/cancellation-preview ---
+
+    @Test
+    @WithMockUser(username = "u@example.com", roles = "TOURIST")
+    void cancellationPreview_asTourist_returnsOk() throws Exception {
+        stubCurrentUser(Role.TOURIST);
+        when(roomReservationService.getCancellationPreview(anyLong(), any()))
+                .thenReturn(com.tourlk.dto.CancellationPreviewResponseDto.builder()
+                        .refundPercent(50).refundAmount(new java.math.BigDecimal("120.00"))
+                        .ruleText("rule").hasPayment(true).build());
+
+        mvc.perform(get("/api/reservations/5/cancellation-preview"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.refundPercent").value(50));
     }
 
     @Test
-    @WithMockUser(roles = "TOURIST")
-    void confirm_asTourist_isForbidden() throws Exception {
-        mvc.perform(put("/api/reservations/5/confirm")).andExpect(status().isForbidden());
+    @WithMockUser(roles = "DRIVER")
+    void cancellationPreview_asDriver_isForbidden() throws Exception {
+        mvc.perform(get("/api/reservations/5/cancellation-preview")).andExpect(status().isForbidden());
         verifyNoInteractions(roomReservationService);
     }
 

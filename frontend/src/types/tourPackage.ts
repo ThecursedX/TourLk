@@ -40,6 +40,50 @@ export interface TourPackageRequestDto {
 }
 
 // Matches com.tourlk.dto.TourPackageResponseDto
+// Matches com.tourlk.dto.AddOnRoomDto
+export interface AddOnRoomDto {
+  id: number
+  roomType: string
+  pricePerNight: number
+  totalRooms: number
+  maxOccupancy: number
+  accommodationId: number
+  accommodationName: string
+}
+
+// Matches com.tourlk.dto.AddOnVehicleDto
+export interface AddOnVehicleDto {
+  id: number
+  make: string
+  model: string
+  vehicleType: string
+  seatingCapacity: number
+  pricePerDay: number
+}
+
+// Matches com.tourlk.dto.PackageAddOnResponseDto — room or vehicle is set, never both
+export interface PackageAddOnResponseDto {
+  id: number
+  note: string | null
+  room: AddOnRoomDto | null
+  vehicle: AddOnVehicleDto | null
+}
+
+// Matches com.tourlk.dto.PackageAddOnItemDto — exactly one of roomId / vehicleId
+export interface PackageAddOnItemDto {
+  roomId?: number
+  vehicleId?: number
+  note?: string
+}
+
+// Matches com.tourlk.dto.AddOnAvailabilityDto
+export interface AddOnAvailabilityDto {
+  roomId: number | null
+  vehicleId: number | null
+  available: boolean
+  roomsLeft: number | null
+}
+
 export interface TourPackageResponseDto {
   id: number
   title: string
@@ -58,6 +102,8 @@ export interface TourPackageResponseDto {
   inclusions: string[]
   exclusions: string[]
   imageUrls: string[]
+  /** Optional hotel rooms / vehicles tourists can add when booking. */
+  addOns: PackageAddOnResponseDto[]
   /** True once the package has any departure; bookings must then pick one. */
   hasDepartures: boolean
   /** Rounded to one decimal; 0 when reviewCount is 0. */

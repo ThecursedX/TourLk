@@ -12,7 +12,11 @@ public interface BookingService {
 
     BookingResponseDto createBooking(BookingRequestDto request, User currentUser);
 
-    BookingResponseDto confirmBooking(Long id);
+    /** Confirms a PENDING booking — the package owner (GUIDE) or an ADMIN. */
+    BookingResponseDto confirmBooking(Long id, User currentUser);
+
+    /** Payment-webhook path: confirms the booking only if it is still PENDING; otherwise a no-op. */
+    void confirmBookingAfterPayment(Long id);
 
     BookingResponseDto requestReschedule(Long id, RescheduleRequestDto request, User currentUser);
 
@@ -40,11 +44,20 @@ public interface BookingService {
      */
     BookingResponseDto rejectBooking(Long id, String reason, User currentUser);
 
+    /**
+     * Cancels a still-PENDING booking that has add-ons and was never paid (their rooms/vehicles stay held
+     * until then); returns whether it was cancelled.
+     */
+    boolean expireUnpaidBooking(Long id);
+
     BookingResponseDto completeBooking(Long id);
 
     BookingResponseDto getBookingById(Long id, User currentUser);
 
     List<BookingResponseDto> getBookingsByTourist(Long touristId);
+
+    /** Every booking on packages created by the given guide, newest first. */
+    List<BookingResponseDto> getBookingsForGuide(User guide);
 
     /** ADMIN sees any package; a GUIDE only their own. */
     List<BookingResponseDto> getBookingsByPackage(Long packageId, User currentUser);

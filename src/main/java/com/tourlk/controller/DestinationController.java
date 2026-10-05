@@ -1,5 +1,6 @@
 package com.tourlk.controller;
 
+import com.tourlk.dto.ClosureImpactDto;
 import com.tourlk.dto.DestinationClosureRequestDto;
 import com.tourlk.dto.DestinationRequestDto;
 import com.tourlk.dto.DestinationResponseDto;
@@ -8,6 +9,7 @@ import com.tourlk.service.DestinationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -67,7 +70,18 @@ public class DestinationController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DestinationResponseDto> close(@PathVariable Long id,
                                                         @Valid @RequestBody DestinationClosureRequestDto request) {
-        return ResponseEntity.ok(destinationService.closeTemporarily(id, request.getReason(), request.getUntil()));
+        return ResponseEntity.ok(destinationService.closeTemporarily(
+                id, request.getReason(), request.getFrom(), request.getUntil()));
+    }
+
+    /** Preview for the close confirmation: active bookings in the window that closing would cancel and refund. */
+    @GetMapping("/{id}/closure-impact")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ClosureImpactDto> closureImpact(
+            @PathVariable Long id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate until) {
+        return ResponseEntity.ok(destinationService.previewClosureImpact(id, from, until));
     }
 
     @PutMapping("/{id}/reopen")

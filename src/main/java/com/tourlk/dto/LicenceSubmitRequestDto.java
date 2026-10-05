@@ -1,5 +1,6 @@
 package com.tourlk.dto;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +12,7 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
-/** Submitted by a GUIDE or DRIVER via PUT /api/users/me/licence to request verification. */
+/** Submitted by a GUIDE or DRIVER via PUT /api/users/me/licence (multipart/form-data, with a separate {@code file} part) to request verification. */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,11 +24,8 @@ public class LicenceSubmitRequestDto {
     private String licenceNumber;
 
     @NotNull(message = "Licence expiry date is required")
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     @Future(message = "Licence expiry date must be in the future")
     private LocalDate licenceExpiry;
-
-    @NotBlank(message = "A licence document URL is required")
-    @Size(max = 1000, message = "Licence document URL must be at most 1000 characters")
-    private String licenceDocumentUrl;
 
 }

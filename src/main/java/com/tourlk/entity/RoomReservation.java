@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
@@ -54,6 +55,22 @@ public class RoomReservation extends AuditableEntity {
 
     @Column(name = "number_of_rooms", nullable = false)
     private int numberOfRooms;
+
+    /** Guests staying; nullable because rows created before occupancy was enforced have none. */
+    @Column(name = "number_of_guests")
+    private Integer numberOfGuests;
+
+    /**
+     * Price frozen at creation (pricePerNight x nights x rooms). Nullable so legacy rows survive
+     * {@code ddl-auto: update}; readers fall back to the live room price when null.
+     */
+    @Column(name = "total_price", precision = 10, scale = 2)
+    private BigDecimal totalPrice;
+
+    /** Set when this was added as an add-on of a package booking; that booking pays for it. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
+    private Booking booking;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -4,6 +4,7 @@ import { browseDestinations } from '../../api/destinationApi'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import DestinationClosureBanner from '../../components/destinations/DestinationClosureBanner'
+import CardImage from '../../components/ui/CardImage'
 import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import { formatProvince, type DestinationResponseDto } from '../../types/destination'
@@ -142,15 +143,10 @@ export default function DestinationListPage() {
           {filteredDestinations.map((destination) => (
               <Card key={destination.id} className="flex flex-col gap-3">
                 <DestinationClosureBanner destination={destination} compact />
-                <Link to={`/destinations/${destination.id}`}>
-                  {destination.imageUrls.length > 0 && (
-                      <img
-                          src={destination.imageUrls[0]}
+                <CardImage urls=
+                  {destination.imageUrls}
                           alt={destination.name}
-                          className="h-40 w-full rounded-md object-cover"
-                      />
-                  )}
-                </Link>
+                          />
                 <div>
                   <Link to={`/destinations/${destination.id}`}>
                     <h3 className="text-lg font-semibold text-slate-900 hover:text-blue-700">{destination.name}</h3>
@@ -175,7 +171,7 @@ export default function DestinationListPage() {
                   <Link to={`/destinations/${destination.id}`} className="hover:underline">
                     View destination
                   </Link>
-                  <Link to="/packages" className="hover:underline">
+                  <Link to={`/packages?destinationId=${destination.id}`} className="hover:underline">
                     Packages
                   </Link>
                   <Link to="/accommodations" className="hover:underline">

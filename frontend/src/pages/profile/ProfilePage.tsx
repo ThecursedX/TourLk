@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
 import { isAxiosError } from 'axios'
 import { changePassword, getMyProfile, submitLicence, updateMyProfile } from '../../api/userApi'
 import { useAuthStore } from '../../auth/authStore'
@@ -6,7 +6,9 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
 import type { ErrorResponse } from '../../types/auth'
-import type { LicenceSubmitRequestDto, UpdateProfileRequestDto, UserResponseDto } from '../../types/user'
+import LicenceDocumentLink from '../../components/users/LicenceDocumentLink'
+import { formatLocalDate } from '../../utils/date'
+import { LICENCE_ALLOWED_TYPES, LICENCE_MAX_BYTES, type UpdateProfileRequestDto, type UserResponseDto } from '../../types/user'
 
 const emptyValues: UpdateProfileRequestDto = { name: '', email: '', phone: '' }
 
@@ -25,29 +27,65 @@ const STATUS_LABEL: Record<UserResponseDto['verificationStatus'], string> = {
 }
 
 function LicenceSection({ profile, onUpdated }: { profile: UserResponseDto; onUpdated: (p: UserResponseDto) => void }) {
-  const [values, setValues] = useState<LicenceSubmitRequestDto>({
-    licenceNumber: profile.licenceNumber ?? '',
-    licenceExpiry: profile.licenceExpiry ?? '',
-    licenceDocumentUrl: profile.licenceDocumentUrl ?? '',
-  })
+  const [licenceNumber, setLicenceNumber] = useState(profile.licenceNumber ?? '')
+  const [licenceExpiry, setLicenceExpiry] = useState(profile.licenceExpiry ?? '')
+  const [file, setFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [renewing, setRenewing] = useState(false)
 
   const noun = profile.role === 'DRIVER' ? 'register a vehicle' : 'create a tour package'
+  const status = profile.verificationStatus
+  const days = profile.licenceDaysUntilExpiry
+  const expiringSoon = status === 'VERIFIED' && !profile.licenceExpired && days !== null && days <= 30
+  const canRenew = status === 'VERIFIED' && (profile.licenceExpired || expiringSoon)
+  const showForm = status === 'NOT_SUBMITTED' || status === 'REJECTED' || (canRenew && renewing)
+  const submitLabel = status === 'REJECTED' ? 'Resubmit' : status === 'VERIFIED' ? 'Submit renewal' : 'Submit for Review'
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0] ?? null
+    setFileError(null)
+    if (!chosen) {
+      setFile(null)
+      return
+    }
+    if (!LICENCE_ALLOWED_TYPES.includes(chosen.type)) {
+      setFile(null)
+      setFileError('Only JPEG, PNG, WebP or PDF files are allowed.')
+      e.target.value = ''
+      return
+    }
+    if (chosen.size > LICENCE_MAX_BYTES) {
+      setFile(null)
+      setFileError('The file is larger than 5 MB.')
+      e.target.value = ''
+      return
+    }
+    setFile(chosen)
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setSuccess(null)
+    if (!file) {
+      setFileError('Please choose a licence document (JPEG, PNG, WebP or PDF, max 5 MB).')
+      return
+    }
     setSubmitting(true)
     try {
-      const updated = await submitLicence(values)
+      const updated = await submitLicence({ licenceNumber, licenceExpiry, file })
       onUpdated(updated)
+      setFile(null)
+      setRenewing(false)
       setSuccess('Your licence has been submitted for review.')
     } catch (err) {
       if (isAxiosError<ErrorResponse>(err) && err.response) {
-        setError(err.response.data.message)
+        const fieldErrors = err.response.data.fieldErrors
+        const firstField = fieldErrors ? Object.values(fieldErrors)[0] : undefined
+        setError(firstField ?? err.response.data.message)
       } else {
         setError('Something went wrong. Please try again.')
       }
@@ -60,8 +98,8 @@ function LicenceSection({ profile, onUpdated }: { profile: UserResponseDto; onUp
     <Card className="max-w-lg">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold text-slate-900">Licence Verification</h2>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[profile.verificationStatus]}`}>
-          {STATUS_LABEL[profile.verificationStatus]}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_BADGE[status]}`}>
+          {STATUS_LABEL[status]}
         </span>
       </div>
 
@@ -69,44 +107,99 @@ function LicenceSection({ profile, onUpdated }: { profile: UserResponseDto; onUp
         You must be a verified {profile.role === 'DRIVER' ? 'driver' : 'guide'} before you can {noun}.
       </p>
 
-      {profile.verificationStatus === 'REJECTED' && profile.licenceRejectionReason && (
+      {status === 'REJECTED' && profile.licenceRejectionReason && (
         <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
           Rejected: {profile.licenceRejectionReason}
         </p>
       )}
 
-      {profile.verificationStatus === 'PENDING' ? (
-        <p className="text-sm text-slate-600">Your licence is awaiting admin review.</p>
-      ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      {status === 'PENDING' && <p className="text-sm text-slate-600">Your licence is awaiting admin review.</p>}
+
+      {status === 'VERIFIED' && (
+        <div className="flex flex-col gap-3">
+          {profile.licenceExpiry && !profile.licenceExpired && (
+            <p className="text-sm font-medium text-slate-700">Valid until {formatLocalDate(profile.licenceExpiry)}</p>
+          )}
+          {profile.licenceExpired && profile.licenceExpiry && (
+            <p className="rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">
+              Licence expired on {formatLocalDate(profile.licenceExpiry)}
+            </p>
+          )}
+          {expiringSoon && (
+            <p className="rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-700">
+              Expires in {days} {days === 1 ? 'day' : 'days'}
+            </p>
+          )}
+          <dl className="flex flex-col gap-1 text-sm text-slate-700">
+            <div className="flex justify-between gap-2">
+              <dt className="text-slate-500">Licence No.</dt>
+              <dd>{profile.licenceNumber}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-slate-500">Expiry date</dt>
+              <dd>{profile.licenceExpiry ? formatLocalDate(profile.licenceExpiry) : '-'}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-slate-500">Verified on</dt>
+              <dd>{profile.licenceVerifiedAt ? new Date(profile.licenceVerifiedAt).toLocaleDateString() : '-'}</dd>
+            </div>
+          </dl>
+          <div className="flex flex-wrap items-start gap-2">
+            <LicenceDocumentLink user={profile} asButton />
+            {canRenew && !renewing && (
+              <Button type="button" onClick={() => setRenewing(true)}>
+                Renew licence
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="mt-1 flex flex-col gap-4" noValidate>
           <Input
             id="licenceNumber"
             label="Licence Number"
-            value={values.licenceNumber}
-            onChange={(e) => setValues((v) => ({ ...v, licenceNumber: e.target.value }))}
+            value={licenceNumber}
+            onChange={(e) => setLicenceNumber(e.target.value)}
           />
           <Input
             id="licenceExpiry"
             label="Licence Expiry"
             type="date"
-            value={values.licenceExpiry}
-            onChange={(e) => setValues((v) => ({ ...v, licenceExpiry: e.target.value }))}
+            value={licenceExpiry}
+            onChange={(e) => setLicenceExpiry(e.target.value)}
           />
-          <Input
-            id="licenceDocumentUrl"
-            label="Licence Document URL"
-            value={values.licenceDocumentUrl}
-            onChange={(e) => setValues((v) => ({ ...v, licenceDocumentUrl: e.target.value }))}
-          />
+          <div className="flex flex-col gap-1">
+            <label htmlFor="licenceDocument" className="text-sm font-medium text-slate-700">
+              Licence Document
+            </label>
+            <input
+              id="licenceDocument"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={handleFileChange}
+              className="text-sm text-slate-700 file:mr-3 file:rounded-full file:border file:border-cobalt-200 file:bg-white/70 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-cobalt-700"
+            />
+            <span className="text-xs text-slate-500">JPEG, PNG, WebP or PDF, max 5 MB.</span>
+            {file && <span className="text-sm text-slate-700">Selected: {file.name}</span>}
+            {fileError && <span className="text-sm text-red-600">{fileError}</span>}
+          </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          {success && <p className="text-sm text-green-700">{success}</p>}
-          <div>
+          <div className="flex gap-2">
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Submitting...' : profile.verificationStatus === 'REJECTED' ? 'Resubmit' : 'Submit for Review'}
+              {submitting ? 'Submitting...' : submitLabel}
             </Button>
+            {status === 'VERIFIED' && (
+              <Button type="button" variant="ghost" disabled={submitting} onClick={() => setRenewing(false)}>
+                Cancel
+              </Button>
+            )}
           </div>
         </form>
       )}
+
+      {success && <p className="mt-3 text-sm text-green-700">{success}</p>}
     </Card>
   )
 }

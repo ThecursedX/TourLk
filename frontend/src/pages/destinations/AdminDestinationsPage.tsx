@@ -6,6 +6,7 @@ import {
   createDestination,
   deactivateDestination,
   getAllDestinations,
+  getClosureImpact,
   publishDestination,
   reactivateDestination,
   reopenDestination,
@@ -17,11 +18,13 @@ import DestinationStatusBadge from '../../components/destinations/DestinationSta
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
+import { todayIso } from '../../utils/closure'
 import type { ErrorResponse } from '../../types/auth'
 import {
   formatProvince,
   type DestinationRequestDto,
   type DestinationResponseDto,
+  type ClosureSummaryDto,
   type DestinationStatus,
 } from '../../types/destination'
 
@@ -34,8 +37,13 @@ const STATUS_FILTER_OPTIONS: { value: DestinationStatus; label: string }[] = [
   { value: 'ARCHIVED', label: 'Archived' },
 ]
 
-const dangerOutline =
-    '!border-red-300 !text-red-600 hover:!border-red-400 hover:!bg-red-50 disabled:!text-slate-400 disabled:!border-slate-200'
+/** " (from X until Y)", " (until Y)", " (from X)" or "" for the closure dates under the status badge. */
+function closureRange(d: { closureFrom: string | null; closureUntil: string | null }): string {
+    if (d.closureFrom && d.closureUntil) return ` (${d.closureFrom} to ${d.closureUntil})`
+  if (d.closureUntil) return ` (until ${d.closureUntil})`
+  if (d.closureFrom) return ` (from ${d.closureFrom})`
+  return ''
+}
 
 function Thumbnail({ url, name }: { url?: string; name: string }) {
   const [failed, setFailed] = useState(false)
@@ -166,7 +174,9 @@ export default function AdminDestinationsPage() {
   // Closing needs a reason (and optionally an end date), so it has its own inline form.
   const [closingId, setClosingId] = useState<number | null>(null)
   const [closeReason, setCloseReason] = useState('')
+  const [closeFrom, setCloseFrom] = useState('')
   const [closeUntil, setCloseUntil] = useState('')
+  const [closeResult, setCloseResult] = useState<{ name: string; summary: ClosureSummaryDto } | null>(null)
   const [closeError, setCloseError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -238,6 +248,7 @@ export default function AdminDestinationsPage() {
   const startClosing = (id: number) => {
     setClosingId(id)
     setCloseReason('')
+    setCloseFrom('')
     setCloseUntil('')
     setCloseError(null)
   }
@@ -251,9 +262,25 @@ export default function AdminDestinationsPage() {
     setCloseError(null)
     setBusyId(id)
     try {
-      const updated = await closeDestination(id, { reason: closeReason.trim(), until: closeUntil || undefined })
+      // Preview first: closing cancels and fully refunds active bookings that overlap the window.
+      const impact = await getClosureImpact(id, closeFrom || undefined, closeUntil || undefined)
+      if (impact.affectedBookings > 0) {
+        const n = impact.affectedBookings
+        const ok = window.confirm(
+          `${n} existing booking${n === 1 ? '' : 's'} in this period will be cancelled and fully refunded. Continue?`,
+        )
+        if (!ok) return
+      }
+      const updated = await closeDestination(id, {
+        reason: closeReason.trim(),
+        from: closeFrom || undefined,
+        until: closeUntil || undefined,
+      })
       setDestinations((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
       setClosingId(null)
+      if (updated.closureSummary) {
+        setCloseResult({ name: updated.name, summary: updated.closureSummary })
+      }
     } catch (err) {
       setCloseError(
           isAxiosError<ErrorResponse>(err) && err.response?.data?.message
@@ -311,7 +338,27 @@ export default function AdminDestinationsPage() {
         {error && <p className="text-red-600">{error}</p>}
         {actionError && <p className="text-red-600">{actionError}</p>}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+        {closeResult && (
+        <div role="status" className="flex items-start justify-between gap-4 rounded-xl border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
+          <div>
+            <p className="font-semibold">{closeResult.name} is now closed.</p>
+            <p className="mt-1">
+              {closeResult.summary.cancelledBookings} booking{closeResult.summary.cancelledBookings === 1 ? '' : 's'} cancelled,
+              {' '}
+              {closeResult.summary.refundedCount} fully refunded.
+            </p>
+            {closeResult.summary.failedRefunds > 0 && (
+              <p className="mt-1 font-medium text-red-700">
+                {closeResult.summary.failedRefunds} booking{closeResult.summary.failedRefunds === 1 ? '' : 's'} could not be
+                cancelled or refunded and still need attention (booking ids: {closeResult.summary.failedBookingIds.join(', ')}).
+              </p>
+            )}
+          </div>
+          <Button type="button" variant="secondary" onClick={() => setCloseResult(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}<div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
             <div className="min-w-48 flex-1">
               <Input
@@ -373,7 +420,7 @@ export default function AdminDestinationsPage() {
 
           {!loading && !error && filtered.length > 0 && (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <table className="w-full min-w-[60rem] divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Name</th>
@@ -381,7 +428,7 @@ export default function AdminDestinationsPage() {
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Packages</th>
                     <th className="px-4 py-3 text-right">Hotels</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
+                    <th className="min-w-56 px-4 py-3 text-right">Actions</th>
                   </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -390,7 +437,7 @@ export default function AdminDestinationsPage() {
                     if (editingId === destination.id) {
                       return (
                           <tr key={destination.id}>
-                            <td colSpan={6} className="bg-slate-50 px-4 py-6">
+                            <td colSpan={6} className="bg-slate-50 p-4">
                               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
                                 <h2 className="text-lg font-semibold text-slate-900">Edit {destination.name}</h2>
                                 <p className="mb-5 mt-1 text-sm text-slate-600">Update the details shown to tourists.</p>
@@ -439,6 +486,13 @@ export default function AdminDestinationsPage() {
                         onClick: () => void runAction(destination.id, deactivateDestination),
                       })
                     }
+                  if (status !== 'ARCHIVED') {
+                    menuItems.push({
+                      label: 'Archive',
+                      danger: true,
+                      onClick: () => confirmArchive(destination.id),
+                    })
+                  }
 
                     return [
                       <tr key={destination.id} className="text-slate-700 hover:bg-slate-50">
@@ -459,14 +513,14 @@ export default function AdminDestinationsPage() {
                           {status === 'TEMPORARILY_CLOSED' && destination.closureReason && (
                               <p className="mt-1 max-w-xs text-xs text-slate-500">
                                 {destination.closureReason}
-                                {destination.closureUntil ? ` (until ${destination.closureUntil})` : ''}
+                                {closureRange(destination)}
                               </p>
                           )}
                         </td>
                         <td className="px-4 py-4 text-right">{destination.activePackageCount ?? '—'}</td>
                         <td className="px-4 py-4 text-right">{destination.activeAccommodationCount ?? '—'}</td>
                         <td className="px-4 py-4">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex flex-wrapitems-center justify-end gap-2">
                             <Button variant="secondary" disabled={busy} onClick={() => setEditingId(destination.id)}>
                               Edit
                             </Button>
@@ -493,16 +547,7 @@ export default function AdminDestinationsPage() {
                                   {status === 'ARCHIVED' ? 'Restore' : 'Reactivate'}
                                 </Button>
                             )}
-                            {status !== 'ARCHIVED' && (
-                                <Button
-                                    variant="secondary"
-                                    className={dangerOutline}
-                                    disabled={busy}
-                                    onClick={() => confirmArchive(destination.id)}
-                                >
-                                  Archive
-                                </Button>
-                            )}
+                            
                             <RowMenu items={menuItems} disabled={busy} />
                           </div>
                         </td>
@@ -525,9 +570,16 @@ export default function AdminDestinationsPage() {
                                   />
                                 </div>
                                 <Input
-                                    id={`closeUntil-${destination.id}`}
-                                    label="Closed until (optional)"
-                                    type="date"
+                                    id={`closeFrom-${destination.id}`}
+                              label="From (optional)"
+                              type="date"
+                              min={todayIso()}
+                              value={closeFrom}
+                              onChange={(e) => setCloseFrom(e.target.value)}
+                            />
+                            <Inputid={`closeUntil-${destination.id}`}
+                                    label="Until (optional)"
+                                    type="date"min={closeFrom || todayIso()}
                                     value={closeUntil}
                                     onChange={(e) => setCloseUntil(e.target.value)}
                                 />
@@ -537,7 +589,9 @@ export default function AdminDestinationsPage() {
                                 <Button type="button" variant="secondary" onClick={() => setClosingId(null)}>
                                   Cancel
                                 </Button>
-                              </form>
+                              </form><p className="mt-2 text-xs text-slate-600">
+                            Leave empty to close from today / until reopened manually
+                          </p>
                               {closeError && <p className="mt-2 text-sm text-red-600">{closeError}</p>}
                             </td>
                           </tr>

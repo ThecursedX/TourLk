@@ -2,10 +2,12 @@ package com.tourlk.service;
 
 import com.tourlk.dto.AuthResponseDto;
 import com.tourlk.dto.ChangePasswordRequestDto;
+import com.tourlk.dto.LicenceDocumentDownload;
 import com.tourlk.dto.LicenceSubmitRequestDto;
 import com.tourlk.dto.UpdateProfileRequestDto;
 import com.tourlk.dto.UserResponseDto;
 import com.tourlk.entity.User;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -80,7 +82,15 @@ public interface UserService {
      *
      * @throws com.tourlk.exception.BadRequestException if the caller isn't a GUIDE or DRIVER
      */
-    UserResponseDto submitLicence(User currentUser, LicenceSubmitRequestDto request);
+    UserResponseDto submitLicence(User currentUser, LicenceSubmitRequestDto request, MultipartFile file);
+
+    /**
+     * The stored licence document of {@code userId}, for that user or an ADMIN only.
+     *
+     * @throws org.springframework.security.access.AccessDeniedException for anyone else
+     * @throws com.tourlk.exception.ResourceNotFoundException if no uploaded document exists
+     */
+    LicenceDocumentDownload getLicenceDocument(Long userId, User requester);
 
     /** Every GUIDE/DRIVER with a licence currently awaiting review. */
     List<UserResponseDto> getPendingLicences();
@@ -90,5 +100,9 @@ public interface UserService {
 
     /** @throws com.tourlk.exception.InvalidStatusTransitionException if the licence isn't PENDING */
     UserResponseDto rejectLicence(Long userId, String reason, User admin);
+
+    UserResponseDto promoteToAdmin(Long id, User currentUser);
+
+    UserResponseDto demoteAdmin(Long id, User currentUser);
 
 }

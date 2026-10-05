@@ -3,13 +3,13 @@ import { getMyAccommodations } from '../../api/accommodationApi'
 import {
   cancelReservation,
   completeReservation,
-  confirmReservation,
   getReservationsByRoom,
 } from '../../api/roomReservationApi'
 import ReservationCard from '../../components/accommodations/ReservationCard'
 import Button from '../../components/ui/Button'
 import Select from '../../components/ui/Select'
 import type { AccommodationResponseDto, RoomReservationResponseDto } from '../../types/accommodation'
+import { apiErrorMessage } from '../../utils/errors'
 
 const CANCELLABLE = new Set(['PENDING', 'CONFIRMED'])
 
@@ -28,7 +28,7 @@ export default function OwnerReservationsPage() {
   useEffect(() => {
     getMyAccommodations()
       .then(setAccommodations)
-      .catch(() => setPropertiesError('Could not load your properties. Please try again later.'))
+      .catch((err) => setPropertiesError(apiErrorMessage(err, 'Could not load your properties. Please try again later.')))
       .finally(() => setLoadingProperties(false))
   }, [])
 
@@ -42,7 +42,9 @@ export default function OwnerReservationsPage() {
     setReservationsError(null)
     getReservationsByRoom(Number(roomId))
       .then(setReservations)
-      .catch(() => setReservationsError('Could not load reservations for this room. Please try again later.'))
+      .catch((err) =>
+        setReservationsError(apiErrorMessage(err, 'Could not load reservations for this room. Please try again later.')),
+      )
       .finally(() => setLoadingReservations(false))
   }
 
@@ -55,8 +57,8 @@ export default function OwnerReservationsPage() {
     try {
       const updated = await action(id)
       setReservations((prev) => prev.map((r) => (r.id === id ? updated : r)))
-    } catch {
-      setActionError('That action could not be completed. Please try again.')
+    } catch (err) {
+      setActionError(apiErrorMessage(err, 'That action could not be completed. Please try again.'))
     } finally {
       setBusyId(null)
     }
@@ -106,7 +108,7 @@ export default function OwnerReservationsPage() {
         <p className="text-slate-600">No reservations for this room type yet.</p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 [&>*]:min-w-0">
         {reservations.map((reservation) => {
           const disabled = busyId === reservation.id
           return (
@@ -115,10 +117,13 @@ export default function OwnerReservationsPage() {
               reservation={reservation}
               footer={
                 <div className="flex flex-wrap gap-2">
-                  {reservation.status === 'PENDING' && (
-                    <Button disabled={disabled} onClick={() => runAction(reservation.id, confirmReservation)}>
-                      Confirm
-                    </Button>
+                  {reservation.bookingId && (
+                    <p className="text-xs text-slate-500">
+                      Confirmed automatically when the package booking is paid.
+                    </p>
+                  )}
+                  {reservation.status === 'PENDING' && !reservation.bookingId && (
+                    <p className="text-xs text-slate-500">Confirmed automatically once the guest pays.</p>
                   )}
                   {reservation.status === 'CONFIRMED' && (
                     <Button disabled={disabled} onClick={() => runAction(reservation.id, completeReservation)}>

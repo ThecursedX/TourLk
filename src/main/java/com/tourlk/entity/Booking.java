@@ -64,6 +64,16 @@ public class Booking extends AuditableEntity {
     @Column(name = "total_price", precision = 10, scale = 2)
     private BigDecimal totalPrice;
 
+    /** Breakdown of totalPrice, frozen at creation. Null on legacy rows (everything was the package). */
+    @Column(name = "package_subtotal", precision = 10, scale = 2)
+    private BigDecimal packageSubtotal;
+
+    @Column(name = "rooms_subtotal", precision = 10, scale = 2)
+    private BigDecimal roomsSubtotal;
+
+    @Column(name = "vehicles_subtotal", precision = 10, scale = 2)
+    private BigDecimal vehiclesSubtotal;
+
     @Column(name = "special_requests", length = 1000)
     private String specialRequests;
 

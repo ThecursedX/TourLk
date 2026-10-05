@@ -30,4 +30,8 @@ public class RoomReservationRequestDto {
     @Positive(message = "Number of rooms must be a positive number")
     private Integer numberOfRooms;
 
+    @NotNull(message = "Number of guests is required")
+    @Positive(message = "Number of guests must be a positive number")
+    private Integer numberOfGuests;
+
 }

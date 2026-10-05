@@ -74,6 +74,7 @@ export interface VehicleSummaryDto {
   model: string
   registrationNumber: string
   pricePerDay: number
+  coverImageUrl: string | null
 }
 
 // Matches com.tourlk.dto.VehicleHireResponseDto
@@ -88,5 +89,14 @@ export interface VehicleHireResponseDto {
   notes: string | null
   totalPrice: number
   status: VehicleHireStatus
+  /** Set when this is an add-on of a package booking — the booking pays for it. */
+  bookingId: number | null
+  packageTitle: string | null
   createdAt: string
+}
+
+/** Inclusive date range during which a vehicle is held by a PENDING or CONFIRMED hire. */
+export interface BookedDateRange {
+  startDate: string
+  endDate: string
 }

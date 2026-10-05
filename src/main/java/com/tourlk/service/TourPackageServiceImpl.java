@@ -1,6 +1,7 @@
 package com.tourlk.service;
 
 import com.tourlk.dto.DestinationResponseDto;
+import com.tourlk.dto.PackageAddOnResponseDto;
 import com.tourlk.dto.ItineraryDayRequestDto;
 import com.tourlk.dto.ItineraryDayResponseDto;
 import com.tourlk.dto.PackageSearchCriteria;
@@ -17,14 +18,14 @@ import com.tourlk.enums.PackageStatus;
 import com.tourlk.enums.ReviewStatus;
 import com.tourlk.enums.ReviewableType;
 import com.tourlk.enums.Role;
-import com.tourlk.enums.VerificationStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.ChangesRequireConfirmationException;
 import com.tourlk.exception.InvalidStatusTransitionException;
-import com.tourlk.exception.LicenceNotVerifiedException;
+import com.tourlk.util.LicenceRules;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.repo.BookingRepository;
 import com.tourlk.repo.ItineraryDayRepository;
+import com.tourlk.repo.PackageAddOnRepository;
 import com.tourlk.repo.PackageDepartureRepository;
 import com.tourlk.repo.ReviewRepository;
 import com.tourlk.repo.ReviewRepository.RatingAggregate;
@@ -70,6 +71,7 @@ public class TourPackageServiceImpl implements TourPackageService {
     private final BookingRepository bookingRepository;
     private final DestinationService destinationService;
     private final NotificationService notificationService;
+    private final PackageAddOnRepository addOnRepository;
 
     @Override
     @Transactional
@@ -313,9 +315,9 @@ public class TourPackageServiceImpl implements TourPackageService {
     }
 
     private void assertLicenceVerifiedIfGuide(User currentUser) {
-        if (currentUser.getRole() == Role.GUIDE && currentUser.getVerificationStatus() != VerificationStatus.VERIFIED) {
-            throw new LicenceNotVerifiedException(
-                    "You must be a verified guide before you can create or submit tour packages");
+        if (currentUser.getRole() == Role.GUIDE) {
+            LicenceRules.assertVerifiedAndCurrent(currentUser,
+                    "You must be a verified guide before you can create or submit tour packages", LocalDate.now());
         }
     }
 
@@ -473,6 +475,9 @@ public class TourPackageServiceImpl implements TourPackageService {
                 .province(destination.resolveProvince())
                 .district(destination.getDistrict())
                 .status(destination.getStatus())
+                .closureReason(destination.getClosureReason())
+                .closureFrom(destination.getClosureFrom())
+                .closureUntil(destination.getClosureUntil())
                 .build();
     }
 
@@ -511,14 +516,20 @@ public class TourPackageServiceImpl implements TourPackageService {
                         .stream()
                         .collect(Collectors.toMap(RatingAggregate::getReviewableId, Function.identity()));
 
+        Map<Long, List<PackageAddOnResponseDto>> addOns = addOnRepository.findByTourPackageIdIn(ids).stream()
+                .collect(Collectors.groupingBy(a -> a.getTourPackage().getId(),
+                        Collectors.mapping(PackageAddOnMapper::toResponse, Collectors.toList())));
+
         return packages.stream()
                 .map(p -> toResponse(p, itineraries.getOrDefault(p.getId(), List.of()),
-                        withDepartures.contains(p.getId()), ratings.get(p.getId())))
+                        withDepartures.contains(p.getId()), ratings.get(p.getId()),
+                        addOns.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 
     private TourPackageResponseDto toResponse(TourPackage tourPackage, List<ItineraryDayResponseDto> itineraryDays,
-                                              boolean hasDepartures, RatingAggregate rating) {
+                                              boolean hasDepartures, RatingAggregate rating,
+                                              List<PackageAddOnResponseDto> addOns) {
         // Rounded the same way as ReviewServiceImpl#getRatingSummary.
         double averageRating = rating == null || rating.getAverageRating() == null
                 ? 0.0
@@ -542,6 +553,7 @@ public class TourPackageServiceImpl implements TourPackageService {
                 .inclusions(tourPackage.getInclusions() == null ? new ArrayList<>() : new ArrayList<>(tourPackage.getInclusions()))
                 .exclusions(tourPackage.getExclusions() == null ? new ArrayList<>() : new ArrayList<>(tourPackage.getExclusions()))
                 .imageUrls(tourPackage.getImageUrls() == null ? new ArrayList<>() : new ArrayList<>(tourPackage.getImageUrls()))
+                .addOns(addOns)
                 .hasDepartures(hasDepartures)
                 .averageRating(averageRating)
                 .reviewCount(reviewCount)

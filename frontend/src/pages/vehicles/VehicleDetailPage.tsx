@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
-import { getVehicleById } from '../../api/vehicleApi'
+import { getBookedDates, getVehicleById } from '../../api/vehicleApi'
 import { useAuthStore } from '../../auth/authStore'
 import HireVehicleForm from '../../components/vehicles/HireVehicleForm'
 import Card from '../../components/ui/Card'
 import VehicleStatusBadge from '../../components/vehicles/VehicleStatusBadge'
 import ReviewList from '../../components/reviews/ReviewList'
 import ImageGallery from '../../components/ui/ImageGallery'
-import { HIREABLE_VEHICLE_STATUSES, type VehicleResponseDto } from '../../types/vehicle'
+import BookedDatesList from '../../components/vehicles/BookedDatesList'
+import { HIREABLE_VEHICLE_STATUSES, type BookedDateRange, type VehicleResponseDto } from '../../types/vehicle'
 
 export default function VehicleDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [vehicle, setVehicle] = useState<VehicleResponseDto | null>(null)
+  const [bookedRanges, setBookedRanges] = useState<BookedDateRange[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,6 +35,13 @@ export default function VehicleDetailPage() {
         }
       })
       .finally(() => setLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (!id) return
+    getBookedDates(Number(id))
+      .then(setBookedRanges)
+      .catch(() => setBookedRanges([]))
   }, [id])
 
   if (loading) return <p className="text-slate-600">Loading...</p>
@@ -56,7 +65,9 @@ export default function VehicleDetailPage() {
           </h1>
           <VehicleStatusBadge status={vehicle.status} />
         </div>
-        <ImageGallery urls={vehicle.imageUrls ?? []} alt={`${vehicle.make} ${vehicle.model}`} />
+        <div className="mx-auto w-full max-w-2xl">
+          <ImageGallery urls={vehicle.imageUrls ?? []} alt={`${vehicle.make} ${vehicle.model}`} />
+        </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <dt className="text-xs uppercase text-slate-500">Type</dt>
@@ -142,7 +153,10 @@ export default function VehicleDetailPage() {
               to hire this vehicle.
             </p>
           )}
-          {canHire && <HireVehicleForm vehicleId={vehicle.id} pricePerDay={vehicle.pricePerDay} />}
+          {!canHire && <BookedDatesList ranges={bookedRanges} />}
+          {canHire && (
+            <HireVehicleForm vehicleId={vehicle.id} pricePerDay={vehicle.pricePerDay} bookedRanges={bookedRanges} />
+          )}
         </Card>
       )}
 

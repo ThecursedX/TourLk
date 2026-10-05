@@ -74,6 +74,13 @@ public class Accommodation extends AuditableEntity {
     @Column(length = 500)
     private String address;
 
+    /** Map position, both set or both null. Optional; existing rows stay null. */
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "accommodation_facilities", joinColumns = @JoinColumn(name = "accommodation_id"))
     @OrderColumn(name = "display_order")
@@ -92,6 +99,10 @@ public class Accommodation extends AuditableEntity {
     @Column(name = "image_url", length = 1000)
     @Builder.Default
     private List<String> imageUrls = new ArrayList<>();
+
+    /** True while an ADMIN's deactivation stands: the owner may not reactivate it. Null/false otherwise. */
+    @Column(name = "deactivated_by_admin")
+    private Boolean deactivatedByAdmin;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)

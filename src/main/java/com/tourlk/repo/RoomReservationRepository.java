@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface RoomReservationRepository extends JpaRepository<RoomReservation, Long> {
@@ -17,8 +18,10 @@ public interface RoomReservationRepository extends JpaRepository<RoomReservation
 
     List<RoomReservation> findByRoomId(Long roomId);
 
+    List<RoomReservation> findByBookingId(Long bookingId);
+
     /**
-     * Sums numberOfRooms across CONFIRMED reservations of a room whose
+     * Sums numberOfRooms across reservations (in {@code statuses}, excluding {@code excludeId}) of a room whose
      * stay overlaps [checkInDate, checkOutDate). Two ranges overlap iff
      * {@code existing.checkIn < requested.checkOut AND existing.checkOut > requested.checkIn}
      * — this is a half-open-interval comparison, so a checkout on day N
@@ -36,11 +39,23 @@ public interface RoomReservationRepository extends JpaRepository<RoomReservation
      * for that room into one at a time.
      */
     @Query("SELECT COALESCE(SUM(rr.numberOfRooms), 0) FROM RoomReservation rr "
-            + "WHERE rr.room.id = :roomId AND rr.status = :status "
+            + "WHERE rr.room.id = :roomId AND rr.status IN :statuses AND rr.id <> :excludeId "
             + "AND rr.checkInDate < :checkOutDate AND rr.checkOutDate > :checkInDate")
     int sumReservedRoomsOverlapping(@Param("roomId") Long roomId,
-                                     @Param("status") RoomReservationStatus status,
+                                     @Param("statuses") Collection<RoomReservationStatus> statuses,
                                      @Param("checkInDate") LocalDate checkInDate,
-                                     @Param("checkOutDate") LocalDate checkOutDate);
+                                     @Param("checkOutDate") LocalDate checkOutDate,
+                                     @Param("excludeId") Long excludeId);
+
+    /** Stays of a room still holding rooms (in {@code statuses}) that end after {@code date}. */
+    List<RoomReservation> findByRoomIdAndStatusInAndCheckOutDateAfter(Long roomId,
+                                                                      Collection<RoomReservationStatus> statuses,
+                                                                      LocalDate date);
+
+    List<RoomReservation> findByRoomAccommodationIdAndStatusIn(Long accommodationId,
+                                                               Collection<RoomReservationStatus> statuses);
+
+    List<RoomReservation> findByStatusAndCreatedAtBefore(RoomReservationStatus status,
+                                                         java.time.LocalDateTime cutoff);
 
 }

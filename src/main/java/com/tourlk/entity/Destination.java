@@ -119,6 +119,10 @@ public class Destination extends AuditableEntity {
     @Column(name = "closure_reason", length = 500)
     private String closureReason;
 
+    /** First day of the closure; null means it started when it was created. */
+    @Column(name = "closure_from")
+    private LocalDate closureFrom;
+
     /** Last day of the closure, if known; the daily job reopens the destination after it. */
     @Column(name = "closure_until")
     private LocalDate closureUntil;

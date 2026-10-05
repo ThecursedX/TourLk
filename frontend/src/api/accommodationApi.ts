@@ -1,11 +1,28 @@
 import axiosClient from './axiosClient'
 import type { AccommodationRequestDto, AccommodationResponseDto, RoomRequestDto, RoomResponseDto } from '../types/accommodation'
 
-export function browseAccommodations(locationId?: number) {
+export type AccommodationSort = 'name' | 'price_asc' | 'price_desc' | 'stars_desc'
+
+export interface BrowseAccommodationsOptions {
+  locationId?: number
+  q?: string
+  minStars?: number
+  minPrice?: number
+  maxPrice?: number
+  sort?: AccommodationSort
+}
+
+/** Only the options that are set are sent as query params. */
+export function browseAccommodations(options: BrowseAccommodationsOptions = {}) {
+  const params: Record<string, string | number> = {}
+  if (options.locationId) params.locationId = options.locationId
+  if (options.q?.trim()) params.q = options.q.trim()
+  if (options.minStars) params.minStars = options.minStars
+  if (options.minPrice !== undefined) params.minPrice = options.minPrice
+  if (options.maxPrice !== undefined) params.maxPrice = options.maxPrice
+  if (options.sort) params.sort = options.sort
   return axiosClient
-    .get<AccommodationResponseDto[]>('/accommodations', {
-      params: locationId ? { locationId } : undefined,
-    })
+    .get<AccommodationResponseDto[]>('/accommodations', { params })
     .then((res) => res.data)
 }
 

@@ -1,5 +1,8 @@
 import axiosClient from './axiosClient'
 import type {
+  AddOnAvailabilityDto,
+  PackageAddOnItemDto,
+  PackageAddOnResponseDto,
   PackageDepartureRequestDto,
   PackageDepartureResponseDto,
   PackageStatus,
@@ -83,4 +86,18 @@ export function addPackageDeparture(packageId: number, data: PackageDepartureReq
 
 export function deletePackageDeparture(packageId: number, departureId: number) {
   return axiosClient.delete<void>(`/packages/${packageId}/departures/${departureId}`).then(() => undefined)
+}
+
+/** Replaces the package's add-ons (package owner or admin). */
+export function replacePackageAddOns(id: number, addOns: PackageAddOnItemDto[]) {
+  return axiosClient
+    .put<PackageAddOnResponseDto[]>(`/packages/${id}/add-ons`, { addOns })
+    .then((res) => res.data)
+}
+
+/** Whether each add-on is free for the trip dates derived from {@code travelDate}. */
+export function getAddOnAvailability(id: number, travelDate: string) {
+  return axiosClient
+    .get<AddOnAvailabilityDto[]>(`/packages/${id}/add-ons/availability`, { params: { travelDate } })
+    .then((res) => res.data)
 }

@@ -7,6 +7,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import BookingStatusBadge from '../../components/bookings/BookingStatusBadge'
 import CancelBookingPanel from '../../components/bookings/CancelBookingPanel'
+import BookingAddOnsSummary from '../../components/bookings/BookingAddOnsSummary'
 import type { BookingResponseDto } from '../../types/booking'
 
 const CANCELLABLE = new Set(['PENDING', 'CONFIRMED', 'RESCHEDULE_REQUESTED', 'RESCHEDULED'])
@@ -41,18 +42,33 @@ export default function BookingDetailPage() {
   if (error) return <p className="text-red-600">{error}</p>
   if (!booking) return null
 
-  const canCancel =
-    !!user && (user.role === 'ADMIN' || user.userId === booking.touristId) && CANCELLABLE.has(booking.status)
+  const isTourist = !!user && user.userId === booking.touristId
+  const isAdmin = user?.role === 'ADMIN'
+  // A guide viewing a booking on their own package: not the tourist, not an admin.
+  const canCancel = (isAdmin || isTourist) && CANCELLABLE.has(booking.status)
+  const canPay = isTourist && (booking.status === 'PENDING' || booking.status === 'CONFIRMED') && !booking.paid
+  const backLink = isAdmin
+    ? { to: '/admin/bookings', label: 'Back to all bookings' }
+    : isTourist
+      ? { to: '/bookings/mine', label: 'Back to my bookings' }
+      : { to: '/packages/mine/bookings', label: 'Back to package bookings' }
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to="/bookings/mine" className="text-sm font-medium text-blue-600 hover:underline">
-        &larr; Back to my bookings
+      <Link to={backLink.to} className="text-sm font-medium text-blue-600 hover:underline">
+        &larr; {backLink.label}
       </Link>
       <Card className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-semibold text-slate-900">{booking.tourPackage.title}</h1>
-          <BookingStatusBadge status={booking.status} />
+          <div className="flex shrink-0 items-center gap-2">
+            <BookingStatusBadge status={booking.status} />
+            {booking.paid && (
+              <span className="inline-block rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                Paid
+              </span>
+            )}
+          </div>
         </div>
         <p className="text-slate-600">{booking.tourPackage.destination}</p>
         <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-4">
@@ -78,6 +94,7 @@ export default function BookingDetailPage() {
             <dd className="text-slate-900">{booking.touristName}</dd>
           </div>
         </div>
+        <BookingAddOnsSummary booking={booking} />
         {booking.requestedTravelDate && (
           <p className="text-sm text-sky-700">
             Requested new travel date: {booking.requestedTravelDate} (awaiting admin decision)
@@ -97,7 +114,7 @@ export default function BookingDetailPage() {
             <dd className="whitespace-pre-line text-slate-700">{booking.specialRequests}</dd>
           </div>
         )}
-        {booking.status === 'PENDING' && (
+        {canPay && (
           <Link to={`/checkout/booking/${booking.id}`} className="self-start">
             <Button>Pay Now</Button>
           </Link>

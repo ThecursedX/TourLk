@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllPayments, getPaymentSummary, refundPayment } from '../../api/paymentApi'
+import { isAxiosError } from 'axios'
+import {
+  bulkDeletePayments,
+  deletePayment,
+  getAllPayments,
+  getPaymentSummary,
+  refundPayment,
+} from '../../api/paymentApi'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -17,6 +24,15 @@ import {
 const PAGE_SIZE = 10
 
 const STATUS_OPTIONS: PaymentStatus[] = ['PENDING', 'SUCCEEDED', 'FAILED', 'REFUND_PENDING', 'REFUNDED', 'CANCELLED']
+
+/** Payments that never completed or are fully refunded can be cleaned up; the backend enforces the same rule. */
+const DELETABLE_STATUSES = new Set<PaymentStatus>(['PENDING', 'FAILED', 'REFUNDED', 'CANCELLED'])
+const isDeletable = (payment: PaymentResponseDto) => DELETABLE_STATUSES.has(payment.status)
+const PROTECTED_TOOLTIP = 'Payments that have succeeded or have a refund in progress cannot be deleted.'
+
+function errorMessage(err: unknown, fallback: string) {
+  return isAxiosError<{ message?: string }>(err) && err.response?.data?.message ? err.response.data.message : fallback
+}
 
 type SortKey = 'date' | 'amount'
 type SortDir = 'asc' | 'desc'
@@ -41,6 +57,9 @@ export default function AdminPaymentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [notice, setNotice] = useState<{ message: string; details: string[] } | null>(null)
 
   const [status, setStatus] = useState<PaymentStatus | ''>('')
   const [payableType, setPayableType] = useState<PayableType | ''>('')
@@ -113,6 +132,88 @@ export default function AdminPaymentsPage() {
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
   const pageRows = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  const pageDeletable = pageRows.filter(isDeletable)
+  const allPageSelected = pageDeletable.length > 0 && pageDeletable.every((p) => selectedIds.has(p.id))
+
+  const toggleSelected = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const toggleSelectPage = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      pageDeletable.forEach((p) => (allPageSelected ? next.delete(p.id) : next.add(p.id)))
+      return next
+    })
+
+  const reload = () => {
+    loadSummary()
+    getAllPayments({
+      status: status || undefined,
+      payableType: payableType || undefined,
+      search: search || undefined,
+      from: from || undefined,
+      to: to || undefined,
+    })
+      .then(setPayments)
+      .catch(() => setError('Could not load payments. Please try again later.'))
+  }
+
+  const handleDelete = async (payment: PaymentResponseDto) => {
+    const confirmed = window.confirm(
+      `Delete payment #${payment.id} (${payment.status.replace('_', ' ')}, ${formatMoney(payment.amount, payment.currency)})? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    setActionError(null)
+    setNotice(null)
+    setBusyId(payment.id)
+    try {
+      await deletePayment(payment.id)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(payment.id)
+        return next
+      })
+      setNotice({ message: `Payment #${payment.id} deleted.`, details: [] })
+      reload()
+    } catch (err) {
+      setActionError(errorMessage(err, 'That payment could not be deleted. Please try again.'))
+      reload()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} selected payment${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) {
+      return
+    }
+
+    setActionError(null)
+    setNotice(null)
+    setBulkBusy(true)
+    try {
+      const result = await bulkDeletePayments(ids)
+      setSelectedIds(new Set())
+      setNotice({
+        message: `${result.deleted} deleted, ${result.skipped.length} skipped`,
+        details: result.skipped.map((s) => `#${s.id}: ${s.reason}`),
+      })
+      reload()
+    } catch (err) {
+      setActionError(errorMessage(err, 'The selected payments could not be deleted. Please try again.'))
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -222,11 +323,47 @@ export default function AdminPaymentsPage() {
 
       {error && <p className="text-red-600">{error}</p>}
       {actionError && <p className="text-red-600">{actionError}</p>}
+      {notice && (
+        <div
+          role="status"
+          className="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800"
+        >
+          <div>
+            <p className="font-medium">{notice.message}</p>
+            {notice.details.length > 0 && (
+              <ul className="mt-1 list-disc pl-5 text-slate-600">
+                {notice.details.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button type="button" onClick={() => setNotice(null)} className="text-slate-500 hover:text-slate-800">
+            &times;
+          </button>
+        </div>
+      )}
+      {selectedIds.size > 0 && (
+        <div>
+          <Button variant="secondary" disabled={bulkBusy} onClick={handleBulkDelete}>
+            {bulkBusy ? 'Deleting...' : `Delete selected (${selectedIds.size})`}
+          </Button>
+        </div>
+      )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
+              <th className={thClass}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all deletable payments on this page"
+                  checked={allPageSelected}
+                  disabled={pageDeletable.length === 0}
+                  onChange={toggleSelectPage}
+                />
+              </th>
               <th className={thClass}>ID</th>
               <th className={thClass} aria-sort={sortKey === 'date' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                 <button type="button" onClick={() => toggleSort('date')} className="uppercase tracking-wide">
@@ -249,14 +386,14 @@ export default function AdminPaymentsPage() {
           <tbody className="divide-y divide-slate-100 bg-white">
             {loading && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-sm text-slate-600">
+                <td colSpan={10} className="px-3 py-8 text-center text-sm text-slate-600">
                   Loading payments...
                 </td>
               </tr>
             )}
             {!loading && !error && pageRows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-sm text-slate-600">
+                <td colSpan={10} className="px-3 py-8 text-center text-sm text-slate-600">
                   {hasFilters ? 'No payments match these filters.' : 'No payments yet.'}
                 </td>
               </tr>
@@ -264,6 +401,16 @@ export default function AdminPaymentsPage() {
             {!loading &&
               pageRows.map((payment) => (
                 <tr key={payment.id}>
+                  <td className={tdClass}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select payment #${payment.id}`}
+                      checked={selectedIds.has(payment.id)}
+                      disabled={!isDeletable(payment)}
+                      title={isDeletable(payment) ? undefined : PROTECTED_TOOLTIP}
+                      onChange={() => toggleSelected(payment.id)}
+                    />
+                  </td>
                   <td className={tdClass}>#{payment.id}</td>
                   <td className={tdClass}>{new Date(payment.createdAt).toLocaleDateString()}</td>
                   <td className={tdClass}>
@@ -295,6 +442,16 @@ export default function AdminPaymentsPage() {
                           Refund
                         </Button>
                       )}
+                      <button
+                        type="button"
+                        aria-label={`Delete payment #${payment.id}`}
+                        title={isDeletable(payment) ? 'Delete this payment record' : PROTECTED_TOOLTIP}
+                        disabled={!isDeletable(payment) || busyId === payment.id}
+                        onClick={() => handleDelete(payment)}
+                        className="rounded-md px-2 py-1 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>

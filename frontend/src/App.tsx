@@ -92,11 +92,6 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/bookings/mine" element={<MyBookingsPage />} />
             <Route path="/bookings/:id" element={<BookingDetailPage />} />
-            <Route path="/accommodations/mine" element={<MyAccommodationsPage />} />
-            <Route path="/accommodations/new" element={<CreateAccommodationPage />} />
-            <Route path="/accommodations/:id/edit" element={<EditAccommodationPage />} />
-            <Route path="/accommodations/owner/reservations" element={<OwnerReservationsPage />} />
-            <Route path="/reservations/mine" element={<MyReservationsPage />} />
             <Route path="/vehicles/mine" element={<MyVehiclesPage />} />
             <Route path="/vehicles/new" element={<CreateVehiclePage />} />
             <Route path="/vehicles/:id/edit" element={<EditVehiclePage />} />
@@ -112,6 +107,21 @@ function App() {
             <Route path="/support/:id" element={<TicketDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute roles={['ADMIN', 'HOTEL_PARTNER']} />}>
+          <Route element={<AccountLayout />}>
+            <Route path="/accommodations/mine" element={<MyAccommodationsPage />} />
+            <Route path="/accommodations/new" element={<CreateAccommodationPage />} />
+            <Route path="/accommodations/:id/edit" element={<EditAccommodationPage />} />
+            <Route path="/accommodations/owner/reservations" element={<OwnerReservationsPage />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute roles={['TOURIST']} />}>
+          <Route element={<AccountLayout />}>
+            <Route path="/reservations/mine" element={<MyReservationsPage />} />
           </Route>
         </Route>
 

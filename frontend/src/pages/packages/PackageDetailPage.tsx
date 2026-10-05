@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { isAxiosError } from 'axios'
+import { browseAccommodations } from '../../api/accommodationApi'
 import { getPackageById } from '../../api/tourPackageApi'
 import { useAuthStore } from '../../auth/authStore'
 import BookNowForm from '../../components/bookings/BookNowForm'
+import DestinationClosureBanner from '../../components/destinations/DestinationClosureBanner'
 import Card from '../../components/ui/Card'
 import StatusBadge from '../../components/packages/StatusBadge'
 import ReviewList from '../../components/reviews/ReviewList'
 import { formatProvince } from '../../types/destination'
+import type { AccommodationResponseDto } from '../../types/accommodation'
 import type { TourPackageResponseDto } from '../../types/tourPackage'
 
 export default function PackageDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [tourPackage, setTourPackage] = useState<TourPackageResponseDto | null>(null)
+  const [nearbyHotels, setNearbyHotels] = useState<AccommodationResponseDto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,6 +38,13 @@ export default function PackageDetailPage() {
       })
       .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (!tourPackage) return
+    browseAccommodations({ locationId: tourPackage.destination.id })
+      .then((hotels) => setNearbyHotels(hotels.filter((h) => h.status === 'ACTIVE' || h.status === 'FULLY_BOOKED')))
+      .catch(() => setNearbyHotels([]))
+  }, [tourPackage])
 
   if (loading) return <p className="text-slate-600">Loading...</p>
   if (error) return <p className="text-red-600">{error}</p>
@@ -78,6 +89,7 @@ export default function PackageDetailPage() {
             · {tourPackage.destination.district}, {formatProvince(tourPackage.destination.province)}
           </span>
         </p>
+        <DestinationClosureBanner destination={tourPackage.destination} />
         <p className="whitespace-pre-line text-slate-700">{tourPackage.description}</p>
         <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-4">
           <div>
@@ -163,6 +175,73 @@ export default function PackageDetailPage() {
         </Card>
       )}
 
+      {(tourPackage.addOns ?? []).length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Optional extras</h2>
+          <p className="text-sm text-slate-600">Add these when you book; they are paid together with the package.</p>
+          <ul className="flex flex-col gap-2">
+            {tourPackage.addOns.map((addOn) => (
+              <li key={addOn.id} className="flex flex-col gap-0.5 rounded-xl border border-slate-200 px-4 py-3 text-sm">
+                {addOn.room && (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Link
+                        to={`/accommodations/${addOn.room.accommodationId}`}
+                        className="font-medium text-blue-600 hover:underline"
+                      >
+                        {addOn.room.accommodationName}
+                      </Link>
+                      <span className="font-semibold text-slate-900">
+                        {addOn.room.pricePerNight.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} /
+                        night
+                      </span>
+                    </div>
+                    <span className="text-slate-600">
+                      {addOn.room.roomType} &middot; sleeps {addOn.room.maxOccupancy}
+                    </span>
+                  </>
+                )}
+                {addOn.vehicle && (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Link to={`/vehicles/${addOn.vehicle.id}`} className="font-medium text-blue-600 hover:underline">
+                        {addOn.vehicle.make} {addOn.vehicle.model}
+                      </Link>
+                      <span className="font-semibold text-slate-900">
+                        {addOn.vehicle.pricePerDay.toLocaleString(undefined, { style: 'currency', currency: 'USD' })} /
+                        day
+                      </span>
+                    </div>
+                    <span className="text-slate-600">
+                      {addOn.vehicle.vehicleType} &middot; {addOn.vehicle.seatingCapacity} seats
+                    </span>
+                  </>
+                )}
+                {addOn.note && <span className="text-slate-500">{addOn.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {nearbyHotels.length > 0 && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Hotels near this destination</h2>
+          <ul className="flex flex-wrap gap-2">
+            {nearbyHotels.slice(0, 8).map((hotel) => (
+              <li key={hotel.id}>
+                <Link
+                  to={`/accommodations/${hotel.id}`}
+                  className="inline-block rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-blue-600 hover:underline"
+                >
+                  {hotel.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {tourPackage.status === 'ACTIVE' && (
         <Card className="flex flex-col gap-4">
           <h2 className="text-lg font-semibold text-slate-900">Book this package</h2>
@@ -176,7 +255,14 @@ export default function PackageDetailPage() {
             </p>
           )}
           {isAuthenticated && user?.role === 'TOURIST' && (
-            <BookNowForm tourPackageId={tourPackage.id} hasDepartures={tourPackage.hasDepartures} />
+            <BookNowForm
+              tourPackageId={tourPackage.id}
+              hasDepartures={tourPackage.hasDepartures}
+              destination={tourPackage.destination}
+              durationDays={tourPackage.durationDays}
+              price={tourPackage.price}
+              addOns={tourPackage.addOns ?? []}
+            />
           )}
         </Card>
       )}

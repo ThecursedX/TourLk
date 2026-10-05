@@ -7,6 +7,7 @@ import com.tourlk.dto.RegisterRequestDto;
 import com.tourlk.dto.ResetPasswordRequestDto;
 import com.tourlk.entity.PasswordResetToken;
 import com.tourlk.entity.User;
+import com.tourlk.enums.Role;
 import com.tourlk.enums.UserStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.repo.PasswordResetTokenRepository;
@@ -47,6 +48,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResponseDto register(RegisterRequestDto request) {
+        if (request.getRole() == Role.ADMIN) {
+            throw new BadRequestException("This role cannot be selected at registration");
+        }
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("An account with this email already exists");
         }

@@ -24,6 +24,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -185,14 +186,72 @@ class AccommodationControllerTest {
 
     @Test
     void browse_noAuthentication_returnsOk() throws Exception {
-        when(accommodationService.getAllActive(any())).thenReturn(List.of());
+        when(accommodationService.getAllActive(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
 
         mvc.perform(get("/api/accommodations")).andExpect(status().isOk());
     }
 
     @Test
-    void getById_noAuthentication_returnsOk() throws Exception {
-        when(accommodationService.getById(30L)).thenReturn(sample());
+    void browse_withAllFilters_parsesAndPassesThemToTheService() throws Exception {
+        when(accommodationService.getAllActive(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        mvc.perform(get("/api/accommodations")
+                        .param("locationId", "3").param("q", "beach").param("minStars", "4")
+                        .param("minPrice", "10.50").param("maxPrice", "99").param("sort", "price_asc"))
+                .andExpect(status().isOk());
+
+        verify(accommodationService).getAllActive(3L, "beach", 4, new java.math.BigDecimal("10.50"),
+                new java.math.BigDecimal("99"), "price_asc");
+    }
+
+    @Test
+    void browse_withoutParameters_passesAllNulls() throws Exception {
+        when(accommodationService.getAllActive(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+        mvc.perform(get("/api/accommodations")).andExpect(status().isOk());
+
+        verify(accommodationService).getAllActive(null, null, null, null, null, null);
+    }
+
+    @Test
+    void browse_invalidFilterRejectedByTheService_returnsBadRequestWithMessage() throws Exception {
+        when(accommodationService.getAllActive(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new com.tourlk.exception.BadRequestException("minStars must be between 1 and 5"));
+
+        mvc.perform(get("/api/accommodations").param("minStars", "9"))
+                .andExpect(status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.message").value("minStars must be between 1 and 5"));
+    }
+
+    @Test
+    void browse_unparseableNumbers_returnBadRequest() throws Exception {
+        mvc.perform(get("/api/accommodations").param("minStars", "abc")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/accommodations").param("minPrice", "cheap")).andExpect(status().isBadRequest());
+        verifyNoInteractions(accommodationService);
+    }
+
+    @Test
+    void getById_noAuthentication_returnsOkAndPassesNoUser() throws Exception {
+        when(accommodationService.getById(30L, null)).thenReturn(sample());
+
+        mvc.perform(get("/api/accommodations/30")).andExpect(status().isOk());
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void getById_hiddenListingAsAnonymous_returnsNotFound() throws Exception {
+        when(accommodationService.getById(30L, null))
+                .thenThrow(new com.tourlk.exception.ResourceNotFoundException("Accommodation not found with id: 30"));
+
+        mvc.perform(get("/api/accommodations/30")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(username = "h@example.com", roles = "HOTEL_PARTNER")
+    void getById_authenticated_passesTheCurrentUserToTheService() throws Exception {
+        stubCurrentUser(Role.HOTEL_PARTNER);
+        when(accommodationService.getById(anyLong(), any(User.class))).thenReturn(sample());
 
         mvc.perform(get("/api/accommodations/30")).andExpect(status().isOk());
     }

@@ -46,6 +46,23 @@ class GlobalExceptionHandlerTest {
     class NotFoundAndBadRequest {
 
         @Test
+        void unmappedUrl_maps404WithStandardBody() throws Exception {
+            mvc.perform(get("/no-such-endpoint"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.status").value(404))
+                    .andExpect(jsonPath("$.error").value("Not Found"))
+                    .andExpect(jsonPath("$.path").value("/no-such-endpoint"));
+        }
+
+        @Test
+        void wrongHttpMethod_maps405WithStandardBody() throws Exception {
+            mvc.perform(post("/err/not-found"))
+                    .andExpect(status().isMethodNotAllowed())
+                    .andExpect(jsonPath("$.status").value(405))
+                    .andExpect(jsonPath("$.path").value("/err/not-found"));
+        }
+
+        @Test
         void resourceNotFound_maps404() throws Exception {
             mvc.perform(get("/err/not-found"))
                     .andExpect(status().isNotFound())

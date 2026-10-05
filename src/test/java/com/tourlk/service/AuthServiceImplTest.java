@@ -89,6 +89,18 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void register_adminRole_isRejectedAndNeverPersists() {
+        RegisterRequestDto request = new RegisterRequestDto(
+                "Mallory", "mallory@example.com", "password123", null, Role.ADMIN);
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("cannot be selected");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void login_validCredentials_authenticatesAndReturnsToken() {
         LoginRequestDto request = new LoginRequestDto("tourist@example.com", "password123");
         User user = User.builder()
