@@ -30,6 +30,8 @@ public class AccommodationResponseDto {
     private String policies;
     private List<String> imageUrls;
     private AccommodationStatus status;
+    /** True when an admin deactivated this listing; the owner can't reactivate it. */
+    private Boolean deactivatedByAdmin;
     private Long ownerId;
     private String ownerName;
     private List<RoomResponseDto> rooms;

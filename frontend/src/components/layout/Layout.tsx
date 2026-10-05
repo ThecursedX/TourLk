@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
-import pageBackground from '../../assets/img.png'
+import pageBackground from '../../assets/12.png'
 
 interface LayoutProps {
   children: ReactNode
@@ -27,16 +27,27 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className={`relative min-h-screen ${isHomepage ? 'bg-slate-50' : ''}`}>
-      {!isHomepage && (
-        <div className="fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
-          <img
-            src={pageBackground}
-            alt=""
-            className="h-full w-full scale-110 object-cover blur-sm"
-          />
-          <div className="absolute inset-0 bg-slate-40/10" />
-        </div>
-      )}
+    {!isHomepage && (
+  <div className="fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+    <img
+      src={pageBackground}
+      alt=""
+      className="bg-kenburns h-full w-full object-cover"
+    />
+    {/* colour tint instead of white haze */}
+<div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/10 to-transparent" />
+
+  {/* vignette: darkens the edges so the centre content pops */}
+
+    <div
+      className="absolute inset-0"
+      style={{
+        background:
+          'radial-gradient(ellipse at center, transparent 55%, rgba(8,24,21,0.45) 100%)',
+      }}
+    />
+  </div>
+)}
       <Navbar />
       <main
         className={`relative mx-auto px-4 ${isAdminRoute ? 'max-w-7xl' : 'max-w-5xl'} ${isHomepage ? '' : 'pt-24 pb-8'}`}

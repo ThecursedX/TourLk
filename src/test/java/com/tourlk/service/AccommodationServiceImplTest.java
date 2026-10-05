@@ -12,6 +12,7 @@ import com.tourlk.entity.User;
 import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.DestinationStatus;
 import com.tourlk.enums.Role;
+import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.DestinationInactiveException;
 import com.tourlk.exception.InvalidStatusTransitionException;
@@ -29,6 +30,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -59,6 +62,8 @@ class AccommodationServiceImplTest {
     private DestinationService destinationService;
     @Mock
     private NotificationService notificationService;
+    @Mock
+    private RoomReservationService roomReservationService;
 
     @InjectMocks
     private AccommodationServiceImpl service;
@@ -221,7 +226,7 @@ class AccommodationServiceImplTest {
         void getById_notFound_throwsResourceNotFound() {
             when(accommodationRepository.findById(404L)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getById(404L)).isInstanceOf(ResourceNotFoundException.class);
+            assertThatThrownBy(() -> service.getById(404L, null)).isInstanceOf(ResourceNotFoundException.class);
         }
     }
 
@@ -446,13 +451,13 @@ class AccommodationServiceImplTest {
 
         @Test
         void getAllActive_includesFullyBookedAndTemporarilyUnavailableListings() {
-            when(accommodationRepository.search(any(), any())).thenReturn(List.of());
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
 
-            service.getAllActive(null);
+            service.getAllActive(null, null, null, null, null, null);
 
             org.mockito.ArgumentCaptor<java.util.Collection<AccommodationStatus>> statuses =
                     org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
-            verify(accommodationRepository).search(statuses.capture(), any());
+            verify(accommodationRepository).search(statuses.capture(), any(), any(), any(), any(), any());
             assertThat(statuses.getValue()).containsExactlyInAnyOrder(
                     AccommodationStatus.ACTIVE, AccommodationStatus.FULLY_BOOKED,
                     AccommodationStatus.TEMPORARILY_UNAVAILABLE);
@@ -507,7 +512,7 @@ class AccommodationServiceImplTest {
 
         @Test
         void updateRoom_byOwner_appliesChanges() {
-            when(roomRepository.findById(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
+            when(roomRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
             when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
 
             RoomResponseDto result = service.updateRoom(40L, roomRequest(), owner);
@@ -545,4 +550,452 @@ class AccommodationServiceImplTest {
                     .isInstanceOf(AccessDeniedException.class);
         }
     }
+
+    // ------------------------------------------------------------------
+    // visibility, capacity edits, deactivate/archive with reservations, admin deactivation
+    // ------------------------------------------------------------------
+
+    private RoomReservation stay(RoomReservationStatus status, int rooms, int startsInDays) {
+        return RoomReservation.builder()
+                .id(70L).room(room(AccommodationStatus.ACTIVE)).status(status).numberOfRooms(rooms)
+                .checkInDate(LocalDate.now().plusDays(startsInDays))
+                .checkOutDate(LocalDate.now().plusDays(startsInDays + 2L))
+                .build();
+    }
+
+    private RoomRequestDto roomRequestWithTotal(int totalRooms) {
+        RoomRequestDto dto = roomRequest();
+        dto.setTotalRooms(totalRooms);
+        return dto;
+    }
+
+    @Nested
+    class Visibility {
+
+        @Test
+        void getById_hiddenStatusesAsAnonymous_throwResourceNotFound() {
+            for (AccommodationStatus status : List.of(AccommodationStatus.DRAFT,
+                    AccommodationStatus.PENDING_APPROVAL, AccommodationStatus.INACTIVE, AccommodationStatus.ARCHIVED)) {
+                when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(status)));
+
+                assertThatThrownBy(() -> service.getById(30L, null))
+                        .as("status %s", status)
+                        .isInstanceOf(ResourceNotFoundException.class);
+            }
+        }
+
+        @Test
+        void getById_hiddenListingAsUnrelatedUser_throwsResourceNotFound() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.DRAFT)));
+
+            assertThatThrownBy(() -> service.getById(30L, stranger)).isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        void getById_hiddenListingAsOwner_returnsIt() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.DRAFT)));
+
+            assertThat(service.getById(30L, owner).getStatus()).isEqualTo(AccommodationStatus.DRAFT);
+        }
+
+        @Test
+        void getById_hiddenListingAsAdmin_returnsIt() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ARCHIVED)));
+
+            assertThat(service.getById(30L, admin).getStatus()).isEqualTo(AccommodationStatus.ARCHIVED);
+        }
+
+        @Test
+        void getById_browsableStatusesAsAnonymous_areReturned() {
+            for (AccommodationStatus status : List.of(AccommodationStatus.ACTIVE,
+                    AccommodationStatus.FULLY_BOOKED, AccommodationStatus.TEMPORARILY_UNAVAILABLE)) {
+                when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(status)));
+
+                assertThat(service.getById(30L, null).getStatus()).isEqualTo(status);
+            }
+        }
+    }
+
+    @Nested
+    class RoomCapacityEdits {
+
+        @Test
+        void updateRoom_reducingBelowRoomsAlreadyHeld_throwsBadRequest() {
+            when(roomRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
+            RoomReservation held = stay(RoomReservationStatus.CONFIRMED, 4, 5);
+            when(roomReservationRepository.findByRoomIdAndStatusInAndCheckOutDateAfter(eq(40L), any(), any()))
+                    .thenReturn(List.of(held));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(
+                    eq(40L), any(), eq(held.getCheckInDate()), eq(held.getCheckInDate().plusDays(1)), eq(0L)))
+                    .thenReturn(4);
+
+            assertThatThrownBy(() -> service.updateRoom(40L, roomRequestWithTotal(3), owner))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("4 room(s) are already reserved")
+                    .hasMessageContaining(held.getCheckInDate().toString());
+            verify(roomRepository, never()).save(any());
+        }
+
+        @Test
+        void updateRoom_reducingToExactlyTheHeldPeak_isAllowed() {
+            when(roomRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
+            when(roomReservationRepository.findByRoomIdAndStatusInAndCheckOutDateAfter(eq(40L), any(), any()))
+                    .thenReturn(List.of(stay(RoomReservationStatus.PENDING, 3, 5)));
+            when(roomReservationRepository.sumReservedRoomsOverlapping(any(), any(), any(), any(), any())).thenReturn(3);
+            when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            assertThat(service.updateRoom(40L, roomRequestWithTotal(3), owner).getTotalRooms()).isEqualTo(3);
+        }
+
+        @Test
+        void updateRoom_stayAlreadyUnderway_isCheckedAgainstTonight() {
+            when(roomRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
+            RoomReservation underway = stay(RoomReservationStatus.CONFIRMED, 4, -1);
+            when(roomReservationRepository.findByRoomIdAndStatusInAndCheckOutDateAfter(eq(40L), any(), any()))
+                    .thenReturn(List.of(underway));
+            LocalDate today = LocalDate.now();
+            when(roomReservationRepository.sumReservedRoomsOverlapping(
+                    eq(40L), any(), eq(today), eq(today.plusDays(1)), eq(0L))).thenReturn(4);
+
+            assertThatThrownBy(() -> service.updateRoom(40L, roomRequestWithTotal(2), owner))
+                    .isInstanceOf(BadRequestException.class);
+        }
+
+        @Test
+        void updateRoom_increasingTotalRooms_doesNotCheckReservations() {
+            when(roomRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(room(AccommodationStatus.ACTIVE)));
+            when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            service.updateRoom(40L, roomRequestWithTotal(9), owner);
+
+            verify(roomReservationRepository, never())
+                    .findByRoomIdAndStatusInAndCheckOutDateAfter(any(), any(), any());
+        }
+    }
+
+    @Nested
+    class DeactivateAndArchiveWithReservations {
+
+        private void stubConfirmedUpcoming(boolean present) {
+            when(roomReservationRepository.findByRoomAccommodationIdAndStatusIn(eq(30L), any()))
+                    .thenReturn(present ? List.of(stay(RoomReservationStatus.CONFIRMED, 1, 5)) : List.of());
+        }
+
+        @Test
+        void deactivate_byOwnerWithConfirmedUpcomingStay_isBlocked() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            stubConfirmedUpcoming(true);
+
+            assertThatThrownBy(() -> service.deactivateAccommodation(30L, owner))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Complete or cancel");
+            verify(roomReservationService, never()).cancelForAccommodation(any(), any(), any());
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void deactivate_byOwnerWithOnlyPending_cancelsPendingAndClearsAdminFlag() {
+            Accommodation acc = accommodation(AccommodationStatus.ACTIVE);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            stubConfirmedUpcoming(false);
+            expectAccSaveEchoed();
+
+            AccommodationResponseDto result = service.deactivateAccommodation(30L, owner);
+
+            assertThat(result.getStatus()).isEqualTo(AccommodationStatus.INACTIVE);
+            assertThat(result.getDeactivatedByAdmin()).isFalse();
+            verify(roomReservationService).cancelForAccommodation(eq(30L),
+                    eq(EnumSet.of(RoomReservationStatus.PENDING)), any());
+        }
+
+        @Test
+        void deactivate_byAdminWithConfirmedUpcomingStay_forcesCancelAndFlagsAdmin() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            expectAccSaveEchoed();
+
+            AccommodationResponseDto result = service.deactivateAccommodation(30L, admin);
+
+            assertThat(result.getStatus()).isEqualTo(AccommodationStatus.INACTIVE);
+            assertThat(result.getDeactivatedByAdmin()).isTrue();
+            verify(roomReservationService).cancelForAccommodation(eq(30L),
+                    eq(EnumSet.of(RoomReservationStatus.PENDING, RoomReservationStatus.CONFIRMED)), any());
+        }
+
+        @Test
+        void archive_byOwnerWithConfirmedUpcomingStay_isBlocked() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            stubConfirmedUpcoming(true);
+
+            assertThatThrownBy(() -> service.archiveAccommodation(30L, owner))
+                    .isInstanceOf(BadRequestException.class);
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void archive_byOwnerWithoutConfirmedStays_cancelsPendingAndArchives() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            stubConfirmedUpcoming(false);
+            expectAccSaveEchoed();
+
+            assertThat(service.archiveAccommodation(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ARCHIVED);
+            verify(roomReservationService).cancelForAccommodation(eq(30L),
+                    eq(EnumSet.of(RoomReservationStatus.PENDING)), any());
+        }
+
+        @Test
+        void archive_byOwnerAfterAdminDeactivation_throwsAccessDenied() {
+            Accommodation acc = accommodation(AccommodationStatus.INACTIVE);
+            acc.setDeactivatedByAdmin(true);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+
+            assertThatThrownBy(() -> service.archiveAccommodation(30L, owner))
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessageContaining("only an administrator can archive");
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.INACTIVE);
+            verify(roomReservationService, never()).cancelForAccommodation(any(), any(), any());
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void archive_byAdminAfterAdminDeactivation_succeeds() {
+            Accommodation acc = accommodation(AccommodationStatus.INACTIVE);
+            acc.setDeactivatedByAdmin(true);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            expectAccSaveEchoed();
+
+            assertThat(service.archiveAccommodation(30L, admin).getStatus()).isEqualTo(AccommodationStatus.ARCHIVED);
+        }
+
+        @Test
+        void archive_byOwnerAfterOwnDeactivation_stillAllowed() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.INACTIVE)));
+            stubConfirmedUpcoming(false);
+            expectAccSaveEchoed();
+
+            assertThat(service.archiveAccommodation(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ARCHIVED);
+        }
+
+        @Test
+        void archive_byAdminWithConfirmedUpcomingStay_cancelsEverything() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            expectAccSaveEchoed();
+
+            assertThat(service.archiveAccommodation(30L, admin).getStatus()).isEqualTo(AccommodationStatus.ARCHIVED);
+            verify(roomReservationService).cancelForAccommodation(eq(30L),
+                    eq(EnumSet.of(RoomReservationStatus.PENDING, RoomReservationStatus.CONFIRMED)), any());
+        }
+
+        @Test
+        void markTemporarilyUnavailable_doesNotCancelAnything() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.ACTIVE)));
+            expectAccSaveEchoed();
+
+            service.markTemporarilyUnavailable(30L, owner);
+
+            verify(roomReservationService, never()).cancelForAccommodation(any(), any(), any());
+        }
+    }
+
+    @Nested
+    class AdminDeactivation {
+
+        @Test
+        void reactivate_byOwnerWhenAdminDeactivated_throwsAccessDenied() {
+            Accommodation acc = accommodation(AccommodationStatus.INACTIVE);
+            acc.setDeactivatedByAdmin(true);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+
+            assertThatThrownBy(() -> service.reactivateAccommodation(30L, owner))
+                    .isInstanceOf(AccessDeniedException.class);
+            assertThat(acc.getStatus()).isEqualTo(AccommodationStatus.INACTIVE);
+            verify(accommodationRepository, never()).save(any());
+        }
+
+        @Test
+        void reactivate_byAdminWhenAdminDeactivated_reactivatesAndClearsFlag() {
+            Accommodation acc = accommodation(AccommodationStatus.INACTIVE);
+            acc.setDeactivatedByAdmin(true);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            expectAccSaveEchoed();
+
+            AccommodationResponseDto result = service.reactivateAccommodation(30L, admin);
+
+            assertThat(result.getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+            assertThat(result.getDeactivatedByAdmin()).isFalse();
+        }
+
+        @Test
+        void reactivate_byOwnerWhenOwnerDeactivated_reactivates() {
+            Accommodation acc = accommodation(AccommodationStatus.INACTIVE);
+            acc.setDeactivatedByAdmin(false);
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(acc));
+            expectAccSaveEchoed();
+
+            assertThat(service.reactivateAccommodation(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        }
+
+        @Test
+        void reactivate_legacyRowWithNullFlag_ownerCanReactivate() {
+            when(accommodationRepository.findById(30L)).thenReturn(Optional.of(accommodation(AccommodationStatus.INACTIVE)));
+            expectAccSaveEchoed();
+
+            assertThat(service.reactivateAccommodation(30L, owner).getStatus()).isEqualTo(AccommodationStatus.ACTIVE);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // search / filter / sort
+    // ------------------------------------------------------------------
+
+    private Accommodation listing(long id, String name, Integer stars) {
+        return Accommodation.builder().id(id).name(name).description("d").location(galle)
+                .starRating(stars).status(AccommodationStatus.ACTIVE).owner(owner).build();
+    }
+
+    private Room roomOf(Accommodation acc, String price) {
+        return Room.builder().id(acc.getId() * 10).accommodation(acc).roomType("Std")
+                .pricePerNight(new BigDecimal(price)).totalRooms(1).maxOccupancy(2).build();
+    }
+
+    /** Stubs the repository to return the listings, each with one room at the given price (null = no rooms). */
+    private void stubSearchResult(Object... listingAndPricePairs) {
+        List<Accommodation> found = new java.util.ArrayList<>();
+        for (int i = 0; i < listingAndPricePairs.length; i += 2) {
+            Accommodation acc = (Accommodation) listingAndPricePairs[i];
+            String price = (String) listingAndPricePairs[i + 1];
+            found.add(acc);
+            when(roomRepository.findByAccommodationId(acc.getId()))
+                    .thenReturn(price == null ? List.of() : List.of(roomOf(acc, price)));
+        }
+        when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(found);
+    }
+
+    private List<String> names(List<AccommodationResponseDto> result) {
+        return result.stream().map(AccommodationResponseDto::getName).toList();
+    }
+
+    @Nested
+    class SearchAndSort {
+
+        @Test
+        void filters_arePassedToTheRepository_withTrimmedLowerCasedEscapedNamePattern() {
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+            service.getAllActive(7L, "  50%_Off [Deal]!  ", 3, new BigDecimal("10"), new BigDecimal("90"), null);
+
+            verify(accommodationRepository).search(any(), eq(7L), eq("%50!%!_off ![deal]!!%"), eq(3),
+                    eq(new BigDecimal("10")), eq(new BigDecimal("90")));
+        }
+
+        @Test
+        void blankName_isIgnored() {
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+            service.getAllActive(null, "   ", null, null, null, "  ");
+
+            verify(accommodationRepository).search(any(), eq(null), eq(null), eq(null), eq(null), eq(null));
+        }
+
+        @Test
+        void onlyBrowsableStatusesAreEverRequested_whateverTheFilters() {
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+            service.getAllActive(1L, "x", 5, BigDecimal.ONE, BigDecimal.TEN, "name");
+
+            org.mockito.ArgumentCaptor<java.util.Collection<AccommodationStatus>> statuses =
+                    org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+            verify(accommodationRepository).search(statuses.capture(), any(), any(), any(), any(), any());
+            assertThat(statuses.getValue()).containsExactlyInAnyOrder(AccommodationStatus.ACTIVE,
+                    AccommodationStatus.FULLY_BOOKED, AccommodationStatus.TEMPORARILY_UNAVAILABLE);
+        }
+
+        @Test
+        void noSort_keepsTheRepositoryOrder() {
+            stubSearchResult(listing(1, "Zed", 3), "50", listing(2, "Alpha", 5), "20");
+
+            assertThat(names(service.getAllActive(null, null, null, null, null, null)))
+                    .containsExactly("Zed", "Alpha");
+        }
+
+        @Test
+        void sortByName_isCaseInsensitiveAscending() {
+            stubSearchResult(listing(1, "zebra Lodge", 3), "50", listing(2, "Alpha Inn", 5), "20",
+                    listing(3, "beach Hut", 2), "10");
+
+            assertThat(names(service.getAllActive(null, null, null, null, null, "name")))
+                    .containsExactly("Alpha Inn", "beach Hut", "zebra Lodge");
+        }
+
+        @Test
+        void sortByPriceAsc_usesCheapestRoom_andPutsListingsWithoutRoomsLast() {
+            Accommodation twoRooms = listing(1, "Two Rooms", 3);
+            when(roomRepository.findByAccommodationId(1L))
+                    .thenReturn(List.of(roomOf(twoRooms, "90"), roomOf(twoRooms, "30")));
+            Accommodation mid = listing(2, "Mid", 3);
+            when(roomRepository.findByAccommodationId(2L)).thenReturn(List.of(roomOf(mid, "60")));
+            Accommodation none = listing(3, "No Rooms", 3);
+            when(roomRepository.findByAccommodationId(3L)).thenReturn(List.of());
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(List.of(none, mid, twoRooms));
+
+            assertThat(names(service.getAllActive(null, null, null, null, null, "price_asc")))
+                    .containsExactly("Two Rooms", "Mid", "No Rooms");
+        }
+
+        @Test
+        void sortByPriceDesc_usesCheapestRoom_andStillPutsListingsWithoutRoomsLast() {
+            Accommodation twoRooms = listing(1, "Two Rooms", 3);
+            when(roomRepository.findByAccommodationId(1L))
+                    .thenReturn(List.of(roomOf(twoRooms, "90"), roomOf(twoRooms, "30")));
+            Accommodation mid = listing(2, "Mid", 3);
+            when(roomRepository.findByAccommodationId(2L)).thenReturn(List.of(roomOf(mid, "60")));
+            Accommodation none = listing(3, "No Rooms", 3);
+            when(roomRepository.findByAccommodationId(3L)).thenReturn(List.of());
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any()))
+                    .thenReturn(List.of(none, twoRooms, mid));
+
+            // cheapest rooms: Mid 60 > Two Rooms 30
+            assertThat(names(service.getAllActive(null, null, null, null, null, "price_desc")))
+                    .containsExactly("Mid", "Two Rooms", "No Rooms");
+        }
+
+        @Test
+        void sortByStarsDesc_putsUnratedLast_andBreaksTiesByName() {
+            stubSearchResult(listing(1, "Unrated", null), "10", listing(2, "Bravo", 4), "10",
+                    listing(3, "Alpha", 4), "10", listing(4, "Top", 5), "10");
+
+            assertThat(names(service.getAllActive(null, null, null, null, null, "stars_desc")))
+                    .containsExactly("Top", "Alpha", "Bravo", "Unrated");
+        }
+
+        @Test
+        void invalidParameters_throwBadRequest_andNeverQuery() {
+            assertThatThrownBy(() -> service.getAllActive(null, null, 0, null, null, null))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("minStars");
+            assertThatThrownBy(() -> service.getAllActive(null, null, 6, null, null, null))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("minStars");
+            assertThatThrownBy(() -> service.getAllActive(null, null, null, new BigDecimal("-1"), null, null))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("negative");
+            assertThatThrownBy(() -> service.getAllActive(null, null, null, null, new BigDecimal("-0.01"), null))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("negative");
+            assertThatThrownBy(() -> service.getAllActive(
+                    null, null, null, new BigDecimal("90"), new BigDecimal("10"), null))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("minPrice");
+            assertThatThrownBy(() -> service.getAllActive(null, null, null, null, null, "cheapest"))
+                    .isInstanceOf(BadRequestException.class).hasMessageContaining("sort");
+
+            verify(accommodationRepository, never()).search(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        void equalMinAndMaxPrice_isAllowed() {
+            when(accommodationRepository.search(any(), any(), any(), any(), any(), any())).thenReturn(List.of());
+
+            service.getAllActive(null, null, null, new BigDecimal("50"), new BigDecimal("50"), null);
+
+            verify(accommodationRepository).search(any(), any(), any(), any(), eq(new BigDecimal("50")),
+                    eq(new BigDecimal("50")));
+        }
+    }
+
 }

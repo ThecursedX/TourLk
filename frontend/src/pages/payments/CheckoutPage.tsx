@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { isAxiosError } from 'axios'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { getBookingById } from '../../api/bookingApi'
 import { getReservationById } from '../../api/roomReservationApi'
@@ -10,7 +9,7 @@ import { getMyPaymentMethods } from '../../api/paymentMethodApi'
 import stripePromise from '../../lib/stripe'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import type { ErrorResponse } from '../../types/auth'
+import { apiErrorMessage } from '../../utils/errors'
 import type { PayableType } from '../../types/payment'
 import type { PaymentMethodResponseDto } from '../../types/paymentMethod'
 
@@ -117,11 +116,8 @@ export default function CheckoutPage() {
           amount = booking.totalPrice
         } else if (normalizedType === 'ROOM_RESERVATION') {
           const reservation = await getReservationById(id)
-          const nights =
-            (new Date(reservation.checkOutDate).getTime() - new Date(reservation.checkInDate).getTime()) /
-            (1000 * 60 * 60 * 24)
           title = `${reservation.room.accommodationName} — ${reservation.room.roomType}`
-          amount = reservation.room.pricePerNight * nights * reservation.numberOfRooms
+          amount = reservation.totalPrice
         } else {
           const hire = await getHireById(id)
           title = `${hire.vehicle.make} ${hire.vehicle.model} (${hire.vehicle.registrationNumber})`
@@ -136,11 +132,7 @@ export default function CheckoutPage() {
         // Without a saved card the Payment Element is the only way to pay, so show it straight away.
         setShowNewCard(methods.length === 0)
       } catch (err) {
-        if (isAxiosError<ErrorResponse>(err) && err.response) {
-          setError(err.response.data.message)
-        } else {
-          setError('Could not start checkout. Please try again later.')
-        }
+        setError(apiErrorMessage(err, 'Could not start checkout. Please try again later.'))
       } finally {
         setLoading(false)
       }
@@ -159,11 +151,7 @@ export default function CheckoutPage() {
       .then((intent) => setClientSecret(intent.clientSecret))
       .catch((err) => {
         intentRequested.current = false
-        setIntentError(
-          isAxiosError<ErrorResponse>(err) && err.response
-            ? err.response.data.message
-            : 'Could not start checkout. Please try again later.',
-        )
+        setIntentError(apiErrorMessage(err, 'Could not start checkout. Please try again later.'))
       })
       .finally(() => setIntentLoading(false))
   }, [showNewCard, summary, payableId, normalizedType])
@@ -204,11 +192,7 @@ export default function CheckoutPage() {
       setSucceeded(true)
       setTimeout(() => navigate('/payments/mine'), 1500)
     } catch (err) {
-      if (isAxiosError<ErrorResponse>(err) && err.response) {
-        setSavedCardError(err.response.data.message)
-      } else {
-        setSavedCardError('Could not start payment. Please try again later.')
-      }
+      setSavedCardError(apiErrorMessage(err, 'Could not start payment. Please try again later.'))
     } finally {
       setPayingWithSaved(false)
     }

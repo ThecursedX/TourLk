@@ -1,5 +1,6 @@
 package com.tourlk.dto;
 
+import com.tourlk.enums.AccommodationStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -26,5 +27,9 @@ public class RoomSummaryDto {
     private Long accommodationId;
     private String accommodationName;
     private String accommodationLocation;
+    /** Lets payment refuse a reservation whose property is no longer open. */
+    private AccommodationStatus accommodationStatus;
+    /** Room's first image, else the property's first image, else null. */
+    private String coverImageUrl;
 
 }

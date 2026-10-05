@@ -68,6 +68,8 @@ export interface AccommodationResponseDto {
   policies: string | null
   imageUrls: string[]
   status: AccommodationStatus
+  /** True when an admin deactivated this listing; the owner can't reactivate it. */
+  deactivatedByAdmin: boolean
   ownerId: number
   ownerName: string
   rooms: RoomResponseDto[]
@@ -80,6 +82,7 @@ export interface RoomReservationRequestDto {
   checkInDate: string
   checkOutDate: string
   numberOfRooms: number
+  numberOfGuests: number
 }
 
 // Matches com.tourlk.dto.RoomSummaryDto
@@ -90,6 +93,8 @@ export interface RoomSummaryDto {
   accommodationId: number
   accommodationName: string
   accommodationLocation: string
+  accommodationStatus: AccommodationStatus
+  coverImageUrl: string | null
 }
 
 // Matches com.tourlk.dto.RoomReservationResponseDto
@@ -101,6 +106,10 @@ export interface RoomReservationResponseDto {
   checkInDate: string
   checkOutDate: string
   numberOfRooms: number
+  /** Null for reservations made before occupancy was enforced. */
+  numberOfGuests: number | null
+  /** Frozen when the reservation was made (the server falls back to the live price for legacy rows). */
+  totalPrice: number
   status: RoomReservationStatus
   /** Set when this is an add-on of a package booking — the booking pays for it. */
   bookingId: number | null

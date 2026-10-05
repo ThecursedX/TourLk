@@ -75,6 +75,12 @@ class RoomInventoryIntegrationTest {
     private DestinationService destinationService;
     @MockBean
     private NotificationService notificationService;
+    @MockBean
+    private RefundGateway refundGateway;
+    @MockBean
+    private RoomCancellationPolicy cancellationPolicy;
+    @Autowired
+    private AccommodationServiceImpl accommodationService;
 
     private User owner;
     private User tourist;
@@ -159,11 +165,11 @@ class RoomInventoryIntegrationTest {
         // The unpaid PENDING first reservation already holds 2 of the 3 rooms, so a second overlapping
         // request for 2 is rejected up front.
         assertThatThrownBy(() -> reservationService.createReservation(
-                new RoomReservationRequestDto(room.getId(), in.plusDays(2), in.plusDays(6), 2), tourist))
+                new RoomReservationRequestDto(room.getId(), in.plusDays(2), in.plusDays(6), 2, 1), tourist))
                 .isInstanceOf(RoomUnavailableException.class);
 
         // Confirming the held reservation must not clash with itself.
-        reservationService.confirmReservation(first, owner);
+        reservationService.confirmReservationAfterPayment(first);
         assertThat(reservationRepository.findById(first).orElseThrow().getStatus())
                 .isEqualTo(RoomReservationStatus.CONFIRMED);
     }
@@ -174,8 +180,8 @@ class RoomInventoryIntegrationTest {
         Long first = pending(in, in.plusDays(3), 3).getId();
         Long backToBack = pending(in.plusDays(3), in.plusDays(5), 3).getId();
 
-        reservationService.confirmReservation(first, owner);
-        reservationService.confirmReservation(backToBack, owner);
+        reservationService.confirmReservationAfterPayment(first);
+        reservationService.confirmReservationAfterPayment(backToBack);
 
         assertThat(sum(in, in.plusDays(5))).isEqualTo(6);   // 3 + 3, never more than 3 on any one night
     }
@@ -184,15 +190,15 @@ class RoomInventoryIntegrationTest {
     void cancelConfirmedReservation_releasesInventoryForAnotherGuest() {
         LocalDate in = today.plusDays(10);
         Long first = pending(in, in.plusDays(3), 3).getId();
-        reservationService.confirmReservation(first, owner);
-        RoomReservationRequestDto another = new RoomReservationRequestDto(room.getId(), in, in.plusDays(3), 1);
+        reservationService.confirmReservationAfterPayment(first);
+        RoomReservationRequestDto another = new RoomReservationRequestDto(room.getId(), in, in.plusDays(3), 1, 1);
 
         assertThatThrownBy(() -> reservationService.createReservation(another, tourist))
                 .isInstanceOf(RoomUnavailableException.class);
 
         reservationService.cancelReservation(first, tourist);
         Long second = reservationService.createReservation(another, tourist).getId();
-        reservationService.confirmReservation(second, owner);
+        reservationService.confirmReservationAfterPayment(second);
 
         assertThat(sum(in, in.plusDays(3))).isEqualTo(1);
     }
@@ -200,10 +206,10 @@ class RoomInventoryIntegrationTest {
     @Test
     void createReservation_whenAllRoomsAreTaken_isRejectedUpFront() {
         LocalDate in = today.plusDays(10);
-        reservationService.confirmReservation(pending(in, in.plusDays(3), 3).getId(), owner);
+        reservationService.confirmReservationAfterPayment(pending(in, in.plusDays(3), 3).getId());
 
         assertThatThrownBy(() -> reservationService.createReservation(
-                new RoomReservationRequestDto(room.getId(), in.plusDays(1), in.plusDays(2), 1), tourist))
+                new RoomReservationRequestDto(room.getId(), in.plusDays(1), in.plusDays(2), 1, 1), tourist))
                 .isInstanceOf(RoomUnavailableException.class);
     }
 
@@ -215,7 +221,7 @@ class RoomInventoryIntegrationTest {
     void accommodation_becomesFullyBookedWhenLastRoomIsTakenTonight_andReopensOnCancellation() {
         Long id = pending(today, today.plusDays(2), 3).getId();
 
-        reservationService.confirmReservation(id, owner);
+        reservationService.confirmReservationAfterPayment(id);
         assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
 
         reservationService.cancelReservation(id, owner);
@@ -225,7 +231,7 @@ class RoomInventoryIntegrationTest {
     @Test
     void accommodation_staysActiveWhenOnlyFutureNightsAreFull() {
         LocalDate in = today.plusDays(5);
-        reservationService.confirmReservation(pending(in, in.plusDays(2), 3).getId(), owner);
+        reservationService.confirmReservationAfterPayment(pending(in, in.plusDays(2), 3).getId());
 
         assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.ACTIVE);
     }
@@ -236,7 +242,7 @@ class RoomInventoryIntegrationTest {
                 .accommodation(accommodation).roomType("Suite")
                 .pricePerNight(new BigDecimal("150.00")).totalRooms(1).maxOccupancy(4).build());
 
-        reservationService.confirmReservation(pending(today, today.plusDays(2), 3).getId(), owner);
+        reservationService.confirmReservationAfterPayment(pending(today, today.plusDays(2), 3).getId());
 
         assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.ACTIVE);
     }
@@ -265,7 +271,7 @@ class RoomInventoryIntegrationTest {
                     start.await();
                     try {
                         created.add(reservationService.createReservation(
-                                new RoomReservationRequestDto(room.getId(), today, today.plusDays(2), 1), tourist)
+                                new RoomReservationRequestDto(room.getId(), today, today.plusDays(2), 1, 1), tourist)
                                 .getId());
                         confirmed.incrementAndGet();
                     } catch (RoomUnavailableException e) {
@@ -285,7 +291,7 @@ class RoomInventoryIntegrationTest {
 
         assertThat(confirmed.get()).isEqualTo(3);
         assertThat(rejected.get()).isEqualTo(attempts - 3);
-        created.forEach(id -> reservationService.confirmReservation(id, owner));   // holds confirm without clashing
+        created.forEach(id -> reservationService.confirmReservationAfterPayment(id));   // holds confirm without clashing
         assertThat(sum(today, today.plusDays(2))).isEqualTo(3);
         assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.FULLY_BOOKED);
     }
@@ -306,7 +312,7 @@ class RoomInventoryIntegrationTest {
             for (Long id : ids) {
                 Callable<Void> task = () -> {
                     start.await();
-                    reservationService.confirmReservation(id, owner);
+                    reservationService.confirmReservationAfterPayment(id);
                     return null;
                 };
                 futures.add(pool.submit(task));
@@ -321,6 +327,75 @@ class RoomInventoryIntegrationTest {
 
         assertThat(reservationRepository.findAll())
                 .allMatch(r -> r.getStatus() == RoomReservationStatus.CONFIRMED);
+    }
+
+    // ------------------------------------------------------------------
+    // property state + capacity edits against real data
+    // ------------------------------------------------------------------
+
+    @Test
+    void confirmAfterPayment_onceThePropertyIsArchived_isRefusedAndStaysPending() {
+        LocalDate in = today.plusDays(10);
+        Long id = pending(in, in.plusDays(3), 1).getId();
+        accommodation.setStatus(AccommodationStatus.ARCHIVED);
+        accommodationRepository.save(accommodation);
+
+        assertThatThrownBy(() -> reservationService.confirmReservationAfterPayment(id))
+                .isInstanceOf(com.tourlk.exception.BadRequestException.class);
+        assertThat(reservationRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(RoomReservationStatus.PENDING);
+    }
+
+    @Test
+    void updateRoom_loweringTotalRoomsBelowHeldRooms_isRejected_andAllowedAtTheHeldPeak() {
+        LocalDate in = today.plusDays(10);
+        pending(in, in.plusDays(3), 2);
+        com.tourlk.dto.RoomRequestDto request = new com.tourlk.dto.RoomRequestDto();
+        request.setRoomType("Deluxe");
+        request.setPricePerNight(new BigDecimal("80.00"));
+        request.setMaxOccupancy(2);
+
+        request.setTotalRooms(1);
+        assertThatThrownBy(() -> accommodationService.updateRoom(room.getId(), request, owner))
+                .isInstanceOf(com.tourlk.exception.BadRequestException.class)
+                .hasMessageContaining("2 room(s) are already reserved");
+
+        request.setTotalRooms(2);
+        accommodationService.updateRoom(room.getId(), request, owner);
+        assertThat(roomRepository.findById(room.getId()).orElseThrow().getTotalRooms()).isEqualTo(2);
+    }
+
+    @Test
+    void archive_byOwnerCancelsPendingReservations() {
+        LocalDate in = today.plusDays(10);
+        Long unpaid = pending(in, in.plusDays(3), 1).getId();
+
+        accommodationService.archiveAccommodation(accommodation.getId(), owner);
+
+        assertThat(reservationRepository.findById(unpaid).orElseThrow().getStatus())
+                .isEqualTo(RoomReservationStatus.CANCELLED);
+        assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.ARCHIVED);
+    }
+
+    @Test
+    void deactivate_byOwnerWithConfirmedUpcomingStay_isBlocked_butAdminForcesIt() {
+        LocalDate in = today.plusDays(10);
+        Long id = pending(in, in.plusDays(3), 1).getId();
+        reservationService.confirmReservationAfterPayment(id);
+        User admin = persist(User.builder().name("Amy").email("amy@inv.test").password("x")
+                .role(Role.ADMIN).build());
+
+        assertThatThrownBy(() -> accommodationService.deactivateAccommodation(accommodation.getId(), owner))
+                .isInstanceOf(com.tourlk.exception.BadRequestException.class);
+        assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.ACTIVE);
+
+        accommodationService.deactivateAccommodation(accommodation.getId(), admin);
+
+        assertThat(reservationRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(RoomReservationStatus.CANCELLED);
+        assertThat(statusOfAccommodation()).isEqualTo(AccommodationStatus.INACTIVE);
+        assertThatThrownBy(() -> accommodationService.reactivateAccommodation(accommodation.getId(), owner))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
 
     // ------------------------------------------------------------------

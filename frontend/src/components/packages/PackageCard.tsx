@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { TourPackageResponseDto } from '../../types/tourPackage'
 import Card from '../ui/Card'
+import CardImage from '../ui/CardImage'
 import DestinationClosureBanner from '../destinations/DestinationClosureBanner'
 import StatusBadge from './StatusBadge'
 import StarRating from '../reviews/StarRating'
@@ -12,13 +13,9 @@ interface PackageCardProps {
 }
 
 export default function PackageCard({ tourPackage, footer }: PackageCardProps) {
-  const coverImage = tourPackage.imageUrls[0]
-
   return (
     <Card className="flex flex-col gap-3" attention={tourPackage.status === 'PENDING_APPROVAL'}>
-      {coverImage && (
-        <img src={coverImage} alt={tourPackage.title} className="h-40 w-full rounded-xl object-cover" />
-      )}
+      <CardImage urls={tourPackage.imageUrls} alt={tourPackage.title} />
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">{tourPackage.title}</h3>
         <StatusBadge status={tourPackage.status} />

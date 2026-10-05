@@ -65,7 +65,9 @@ export default function VehicleDetailPage() {
           </h1>
           <VehicleStatusBadge status={vehicle.status} />
         </div>
-        <ImageGallery urls={vehicle.imageUrls ?? []} alt={`${vehicle.make} ${vehicle.model}`} />
+        <div className="mx-auto w-full max-w-2xl">
+          <ImageGallery urls={vehicle.imageUrls ?? []} alt={`${vehicle.make} ${vehicle.model}`} />
+        </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <dt className="text-xs uppercase text-slate-500">Type</dt>

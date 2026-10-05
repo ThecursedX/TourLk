@@ -27,7 +27,7 @@ export default function AddOnPicker({ destinationId, value, onChange }: AddOnPic
     }
     setLoading(true)
     setError(null)
-    Promise.all([browseAccommodations(destinationId), browseVehicles()])
+    Promise.all([browseAccommodations({ locationId: destinationId }), browseVehicles()])
       .then(([accommodations, allVehicles]) => {
         setHotels(accommodations.filter((a) => a.status === 'ACTIVE' && a.rooms.length > 0))
         setVehicles(allVehicles.filter((v) => v.status === 'AVAILABLE'))

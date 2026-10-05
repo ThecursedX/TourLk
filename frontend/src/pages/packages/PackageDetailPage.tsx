@@ -41,7 +41,7 @@ export default function PackageDetailPage() {
 
   useEffect(() => {
     if (!tourPackage) return
-    browseAccommodations(tourPackage.destination.id)
+    browseAccommodations({ locationId: tourPackage.destination.id })
       .then((hotels) => setNearbyHotels(hotels.filter((h) => h.status === 'ACTIVE' || h.status === 'FULLY_BOOKED')))
       .catch(() => setNearbyHotels([]))
   }, [tourPackage])

@@ -74,6 +74,7 @@ export interface VehicleSummaryDto {
   model: string
   registrationNumber: string
   pricePerDay: number
+  coverImageUrl: string | null
 }
 
 // Matches com.tourlk.dto.VehicleHireResponseDto

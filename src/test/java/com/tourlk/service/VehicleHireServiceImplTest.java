@@ -169,6 +169,22 @@ class VehicleHireServiceImplTest {
     }
 
     @Test
+    void getHireById_vehicleWithImages_exposesFirstAsCoverImage() {
+        vehicle.setImageUrls(java.util.List.of("https://img/car1.jpg", "https://img/car2.jpg"));
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
+
+        assertThat(service.getHireById(8L, tourist).getVehicle().getCoverImageUrl())
+                .isEqualTo("https://img/car1.jpg");
+    }
+
+    @Test
+    void getHireById_vehicleWithoutImages_coverImageIsNull() {
+        when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
+
+        assertThat(service.getHireById(8L, tourist).getVehicle().getCoverImageUrl()).isNull();
+    }
+
+    @Test
     void confirmHire_byUnrelatedUser_throwsAccessDenied() {
         when(vehicleHireRepository.findById(8L)).thenReturn(Optional.of(hire(VehicleHireStatus.PENDING, tourist)));
         when(vehicleRepository.findByIdForUpdate(40L)).thenReturn(Optional.of(vehicle));

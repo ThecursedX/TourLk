@@ -16,6 +16,7 @@ import com.tourlk.entity.Invoice;
 import com.tourlk.entity.Payment;
 import com.tourlk.entity.SavedPaymentMethod;
 import com.tourlk.entity.User;
+import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.NotificationType;
 import com.tourlk.enums.PayableType;
@@ -217,6 +218,17 @@ public class PaymentServiceImpl implements PaymentService {
                     + " and is paid together with it — pay for the booking instead.");
         }
 
+        AccommodationStatus propertyStatus = reservation.getRoom().getAccommodationStatus();
+        if (propertyStatus != AccommodationStatus.ACTIVE && propertyStatus != AccommodationStatus.FULLY_BOOKED) {
+            throw new BadRequestException(propertyStatus == AccommodationStatus.TEMPORARILY_UNAVAILABLE
+                    ? "This accommodation has paused reservations; you can pay once it resumes"
+                    : "This accommodation is no longer open for reservations, so this reservation can't be paid");
+        }
+
+        // Frozen at reservation time; legacy rows (null) fall back to the live room price.
+        if (reservation.getTotalPrice() != null) {
+            return reservation.getTotalPrice();
+        }
         long nights = ChronoUnit.DAYS.between(reservation.getCheckInDate(), reservation.getCheckOutDate());
         return reservation.getRoom().getPricePerNight()
                 .multiply(BigDecimal.valueOf(nights))

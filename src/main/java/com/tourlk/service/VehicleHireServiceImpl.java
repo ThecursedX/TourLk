@@ -379,6 +379,8 @@ public class VehicleHireServiceImpl implements VehicleHireService {
                 .model(vehicle.getModel())
                 .registrationNumber(vehicle.getRegistrationNumber())
                 .pricePerDay(vehicle.getPricePerDay())
+                .coverImageUrl(vehicle.getImageUrls() == null ? null : vehicle.getImageUrls().stream()
+                        .filter(url -> url != null && !url.isBlank()).findFirst().orElse(null))
                 .build();
 
         return VehicleHireResponseDto.builder()

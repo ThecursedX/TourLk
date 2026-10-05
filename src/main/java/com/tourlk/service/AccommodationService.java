@@ -6,6 +6,7 @@ import com.tourlk.dto.RoomRequestDto;
 import com.tourlk.dto.RoomResponseDto;
 import com.tourlk.entity.User;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface AccommodationService {
@@ -32,9 +33,21 @@ public interface AccommodationService {
 
     AccommodationResponseDto archiveAccommodation(Long id, User currentUser);
 
-    AccommodationResponseDto getById(Long id);
+    /**
+     * Public detail view. Listings that aren't live (draft, pending, inactive, archived) are
+     * hidden (ResourceNotFoundException) from everyone except their owner and admins.
+     * {@code currentUser} is null for anonymous callers.
+     */
+    AccommodationResponseDto getById(Long id, User currentUser);
 
-    List<AccommodationResponseDto> getAllActive(Long locationId);
+    /**
+     * Public browse of live listings (ACTIVE, FULLY_BOOKED, TEMPORARILY_UNAVAILABLE only), with optional
+     * filters: name contains {@code q} (case-insensitive, literal), {@code minStars} 1-5, nightly price
+     * range matched against any room type, and {@code sort} (name, price_asc, price_desc, stars_desc).
+     * Invalid parameters throw BadRequestException.
+     */
+    List<AccommodationResponseDto> getAllActive(Long locationId, String q, Integer minStars,
+                                                BigDecimal minPrice, BigDecimal maxPrice, String sort);
 
     List<AccommodationResponseDto> getPendingApproval();
 

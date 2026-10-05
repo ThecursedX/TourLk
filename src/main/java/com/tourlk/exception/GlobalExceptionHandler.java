@@ -13,7 +13,10 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -228,6 +231,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex,
                                                              HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "You do not have permission to perform this action", request);
+    }
+
+    /** A URL no controller maps (Spring 6.1+ raises NoResourceFoundException; older setups NoHandlerFoundException). */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ErrorResponse> handleNoHandler(Exception ex, HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, "No endpoint found for " + request.getRequestURI(), request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex,
+                                                                    HttpServletRequest request) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED,
+                "Method " + ex.getMethod() + " is not supported for this endpoint", request);
     }
 
     @ExceptionHandler(Exception.class)

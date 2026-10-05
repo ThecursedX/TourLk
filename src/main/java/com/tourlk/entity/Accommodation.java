@@ -100,6 +100,10 @@ public class Accommodation extends AuditableEntity {
     @Builder.Default
     private List<String> imageUrls = new ArrayList<>();
 
+    /** True while an ADMIN's deactivation stands: the owner may not reactivate it. Null/false otherwise. */
+    @Column(name = "deactivated_by_admin")
+    private Boolean deactivatedByAdmin;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;

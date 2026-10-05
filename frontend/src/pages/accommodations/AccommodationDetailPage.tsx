@@ -71,7 +71,9 @@ export default function AccommodationDetailPage() {
         </p>
         {accommodation.address && <p className="text-sm text-slate-600">{accommodation.address}</p>}
         <LocationMap name={accommodation.name} latitude={accommodation.latitude} longitude={accommodation.longitude} />
-        <ImageGallery urls={accommodation.imageUrls ?? []} alt={accommodation.name} />
+        <div className="mx-auto w-full max-w-2xl">
+          <ImageGallery urls={accommodation.imageUrls ?? []} alt={accommodation.name} />
+        </div>
         <p className="whitespace-pre-line text-slate-700">{accommodation.description}</p>
         {(accommodation.facilities?.length ?? 0) > 0 && (
           <div>

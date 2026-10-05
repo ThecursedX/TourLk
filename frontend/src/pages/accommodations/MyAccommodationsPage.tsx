@@ -12,6 +12,7 @@ import {
 import AccommodationCard from '../../components/accommodations/AccommodationCard'
 import Button from '../../components/ui/Button'
 import { isLiveAccommodation, type AccommodationResponseDto } from '../../types/accommodation'
+import { apiErrorMessage } from '../../utils/errors'
 
 export default function MyAccommodationsPage() {
   const [accommodations, setAccommodations] = useState<AccommodationResponseDto[]>([])
@@ -25,7 +26,7 @@ export default function MyAccommodationsPage() {
     setError(null)
     getMyAccommodations()
       .then(setAccommodations)
-      .catch(() => setError('Could not load your properties. Please try again later.'))
+      .catch((err) => setError(apiErrorMessage(err, 'Could not load your properties. Please try again later.')))
       .finally(() => setLoading(false))
   }
 
@@ -42,8 +43,8 @@ export default function MyAccommodationsPage() {
     try {
       const updated = await action(id)
       setAccommodations((prev) => prev.map((a) => (a.id === id ? updated : a)))
-    } catch {
-      setActionError('That action could not be completed. Please try again.')
+    } catch (err) {
+      setActionError(apiErrorMessage(err, 'That action could not be completed. Please try again.'))
     } finally {
       setBusyId(null)
     }
@@ -121,7 +122,10 @@ export default function MyAccommodationsPage() {
                       Deactivate
                     </Button>
                   )}
-                  {accommodation.status === 'INACTIVE' && (
+                  {accommodation.status === 'INACTIVE' && accommodation.deactivatedByAdmin && (
+                    <span className="self-center text-sm text-slate-600">Deactivated by admin</span>
+                  )}
+                  {accommodation.status === 'INACTIVE' && !accommodation.deactivatedByAdmin && (
                     <Button
                       variant="secondary"
                       disabled={disabled}
@@ -130,7 +134,8 @@ export default function MyAccommodationsPage() {
                       Reactivate
                     </Button>
                   )}
-                  {accommodation.status !== 'ARCHIVED' && (
+                  {accommodation.status !== 'ARCHIVED' &&
+                    !(accommodation.status === 'INACTIVE' && accommodation.deactivatedByAdmin) && (
                     <Button
                       variant="secondary"
                       disabled={disabled}

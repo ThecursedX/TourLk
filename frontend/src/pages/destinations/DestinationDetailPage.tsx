@@ -38,7 +38,7 @@ export default function DestinationDetailPage() {
   useEffect(() => {
     if (!id) return
     setAccommodationsLoading(true)
-    browseAccommodations(Number(id))
+    browseAccommodations({ locationId: Number(id) })
       .then(setAccommodations)
       .catch(() => setAccommodations([]))
       .finally(() => setAccommodationsLoading(false))

@@ -75,3 +75,16 @@ input:-webkit-autofill:focus {
   box-shadow: 0 0 0px 1000px #ffffff inset;
   transition: background-color 9999s ease-in-out 0s;
 }
+@keyframes kenburns {
+  from { transform: scale(1) translate(0, 0); }
+  to   { transform: scale(1.08) translate(-1%, -1%); }
+}
+
+.bg-kenburns {
+  animation: kenburns 30s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-kenburns { animation: none; }
+}

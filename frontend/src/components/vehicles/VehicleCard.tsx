@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { VehicleResponseDto } from '../../types/vehicle'
 import Card from '../ui/Card'
+import CardImage from '../ui/CardImage'
 import VehicleStatusBadge from './VehicleStatusBadge'
 
 interface VehicleCardProps {
@@ -12,16 +13,7 @@ interface VehicleCardProps {
 export default function VehicleCard({ vehicle, footer }: VehicleCardProps) {
   return (
     <Card className="flex flex-col gap-3" attention={vehicle.status === 'PENDING_VERIFICATION'}>
-      {vehicle.imageUrls?.[0] && (
-        <img
-          src={vehicle.imageUrls[0]}
-          alt=""
-          className="h-36 w-full rounded-lg border border-slate-200 object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = 'none'
-          }}
-        />
-      )}
+      <CardImage urls={vehicle.imageUrls ?? []} alt={`${vehicle.make} ${vehicle.model}`} />
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">
           {vehicle.make} {vehicle.model}

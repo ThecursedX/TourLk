@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
 import TagInput from '../ui/TagInput'
-import ImageUrlListInput, { cleanImageUrls } from '../ui/ImageUrlListInput'
+import ImageUrlListInput, { cleanImageUrls, hasInvalidImageUrl } from '../ui/ImageUrlListInput'
 import type { ErrorResponse } from '../../types/auth'
 import { MAX_ACCOMMODATION_IMAGES, type RoomRequestDto } from '../../types/accommodation'
 
@@ -45,6 +45,8 @@ export default function RoomForm({ initialValues, onSubmit, onCancel, submitLabe
     }
     if ((values.imageUrls ?? []).length > MAX_ACCOMMODATION_IMAGES) {
       errors.imageUrls = `At most ${MAX_ACCOMMODATION_IMAGES} images are allowed`
+    } else if (hasInvalidImageUrl(values.imageUrls)) {
+      errors.imageUrls = 'Image URLs must start with http:// or https://'
     }
     setFieldErrors(errors)
     return Object.keys(errors).length === 0

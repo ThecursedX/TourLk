@@ -1,16 +1,20 @@
 package com.tourlk.service;
 
+import com.tourlk.dto.CancellationPreviewResponseDto;
 import com.tourlk.dto.RoomReservationRequestDto;
 import com.tourlk.dto.RoomReservationResponseDto;
 import com.tourlk.dto.RoomSummaryDto;
 import com.tourlk.entity.Accommodation;
 import com.tourlk.entity.Booking;
+import com.tourlk.entity.Payment;
 import com.tourlk.entity.Room;
 import com.tourlk.entity.RoomReservation;
 import com.tourlk.entity.User;
 import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.NotificationType;
+import com.tourlk.enums.PayableType;
+import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.exception.BadRequestException;
@@ -18,6 +22,7 @@ import com.tourlk.exception.InvalidDateRangeException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.ResourceNotFoundException;
 import com.tourlk.exception.RoomUnavailableException;
+import com.tourlk.repo.PaymentRepository;
 import com.tourlk.repo.RoomRepository;
 import com.tourlk.repo.RoomReservationRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +31,12 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Availability is enforced with pessimistic locking for the same reason
@@ -54,23 +63,27 @@ public class RoomReservationServiceImpl implements RoomReservationService {
     private final RoomRepository roomRepository;
     private final AccommodationService accommodationService;
     private final NotificationService notificationService;
+    private final PaymentRepository paymentRepository;
+    private final RefundGateway refundGateway;
+    private final RoomCancellationPolicy cancellationPolicy;
 
     @Override
     @Transactional
     public RoomReservationResponseDto createReservation(RoomReservationRequestDto request, User currentUser) {
         return doCreate(request.getRoomId(), request.getCheckInDate(), request.getCheckOutDate(),
-                request.getNumberOfRooms(), currentUser, null);
+                request.getNumberOfRooms(), request.getNumberOfGuests(), currentUser, null);
     }
 
     @Override
     @Transactional
     public RoomReservationResponseDto createLinkedReservation(Booking booking, Long roomId, int numberOfRooms,
                                                               LocalDate checkIn, LocalDate checkOut) {
-        return doCreate(roomId, checkIn, checkOut, numberOfRooms, booking.getTourist(), booking);
+        return doCreate(roomId, checkIn, checkOut, numberOfRooms, null, booking.getTourist(), booking);
     }
 
     private RoomReservationResponseDto doCreate(Long roomId, LocalDate checkInDate, LocalDate checkOutDate,
-                                                int numberOfRooms, User currentUser, Booking booking) {
+                                                int numberOfRooms, Integer numberOfGuests, User currentUser,
+                                                Booking booking) {
         assertDateRange(checkInDate, checkOutDate);
 
         Room room = getLockedRoom(roomId);
@@ -86,6 +99,13 @@ public class RoomReservationServiceImpl implements RoomReservationService {
             throw new BadRequestException("This accommodation is not currently open for reservations");
         }
 
+        // Linked add-ons carry no guest count (null); only direct reservations are checked.
+        if (numberOfGuests != null && numberOfGuests > room.getMaxOccupancy() * numberOfRooms) {
+            throw new BadRequestException("This room type sleeps at most " + room.getMaxOccupancy()
+                    + " guest(s) per room, so " + numberOfRooms + " room(s) can host "
+                    + room.getMaxOccupancy() * numberOfRooms + " guest(s), not " + numberOfGuests);
+        }
+
         assertAvailability(room, checkInDate, checkOutDate, numberOfRooms, 0L);
 
         RoomReservation reservation = RoomReservation.builder()
@@ -94,6 +114,8 @@ public class RoomReservationServiceImpl implements RoomReservationService {
                 .checkInDate(checkInDate)
                 .checkOutDate(checkOutDate)
                 .numberOfRooms(numberOfRooms)
+                .numberOfGuests(numberOfGuests)
+                .totalPrice(priceOf(room.getPricePerNight(), checkInDate, checkOutDate, numberOfRooms))
                 .booking(booking)
                 .status(RoomReservationStatus.PENDING)
                 .build();
@@ -109,25 +131,16 @@ public class RoomReservationServiceImpl implements RoomReservationService {
 
     @Override
     @Transactional
-    public RoomReservationResponseDto confirmReservation(Long id, User currentUser) {
-        RoomReservation reservation = getEntity(id);
-        assertNotPartOfActiveBooking(reservation, "confirmed");
-        Room room = getLockedRoom(reservation.getRoom().getId());
-        assertOwnerOrAdmin(room.getAccommodation(), currentUser);
-        return doConfirm(reservation, room, currentUser);
-    }
-
-    @Override
-    @Transactional
     public RoomReservationResponseDto confirmReservationAfterPayment(Long id) {
         RoomReservation reservation = getEntity(id);
         Room room = getLockedRoom(reservation.getRoom().getId());
-        return doConfirm(reservation, room, null);
+        return doConfirm(reservation, room);
     }
 
-    /** {@code actor} is the owner/admin who confirmed, or null when a successful payment confirmed it. */
-    private RoomReservationResponseDto doConfirm(RoomReservation reservation, Room room, User actor) {
+    /** Only payment confirms a reservation, so there is never an acting user to skip notifying. */
+    private RoomReservationResponseDto doConfirm(RoomReservation reservation, Room room) {
         assertStatus(reservation, RoomReservationStatus.PENDING, "confirmed");
+        assertOpenForPayment(room.getAccommodation());
         assertAvailability(room, reservation.getCheckInDate(), reservation.getCheckOutDate(),
                 reservation.getNumberOfRooms(), reservation.getId());
 
@@ -135,10 +148,10 @@ public class RoomReservationServiceImpl implements RoomReservationService {
         RoomReservation saved = roomReservationRepository.save(reservation);
         accommodationService.refreshAvailabilityStatus(room.getAccommodation().getId());
         Accommodation accommodation = room.getAccommodation();
-        notifyUser(saved.getTourist(), actor, NotificationType.ROOM_RESERVATION_CONFIRMED, "Reservation confirmed",
+        notifyUser(saved.getTourist(), null, NotificationType.ROOM_RESERVATION_CONFIRMED, "Reservation confirmed",
                 "Your stay at " + accommodation.getName() + " from " + saved.getCheckInDate() + " to "
                         + saved.getCheckOutDate() + " is confirmed.", "/reservations/mine");
-        notifyUser(accommodation.getOwner(), actor, NotificationType.ROOM_RESERVATION_CONFIRMED,
+        notifyUser(accommodation.getOwner(), null, NotificationType.ROOM_RESERVATION_CONFIRMED,
                 "Reservation confirmed", saved.getNumberOfRooms() + " x " + room.getRoomType() + " booked from "
                         + saved.getCheckInDate() + " to " + saved.getCheckOutDate() + ".",
                 "/accommodations/owner/reservations");
@@ -150,23 +163,163 @@ public class RoomReservationServiceImpl implements RoomReservationService {
     public RoomReservationResponseDto cancelReservation(Long id, User currentUser) {
         RoomReservation reservation = getEntity(id);
         assertTouristOrOwnerOrAdmin(reservation, currentUser);
-        assertNotPartOfActiveBooking(reservation, "cancelled");
+        boolean byTourist = reservation.getTourist().getId().equals(currentUser.getId());
+        // A tourist manages add-ons through the package booking; the property may still pull its own room.
+        if (byTourist || !isOwnerOrAdmin(reservation, currentUser)) {
+            assertNotPartOfActiveBooking(reservation, "cancelled");
+        }
 
         if (TERMINAL_STATUSES.contains(reservation.getStatus())) {
             throw new InvalidStatusTransitionException("This reservation is already " + reservation.getStatus());
+        }
+
+        boolean linkedAddOn = isLinkedToActiveBooking(reservation);
+        if (linkedAddOn) {
+            refundLinkedShare(reservation);
+        } else {
+            applyRefund(reservation, refundPercentFor(reservation, byTourist));
         }
 
         reservation.setStatus(RoomReservationStatus.CANCELLED);
         RoomReservation saved = roomReservationRepository.save(reservation);
         accommodationService.refreshAvailabilityStatus(reservation.getRoom().getAccommodation().getId());
         Accommodation accommodation = saved.getRoom().getAccommodation();
-        boolean byTourist = saved.getTourist().getId().equals(currentUser.getId());
+        String message = linkedAddOn
+                ? "The hotel cancelled your room at " + accommodation.getName() + " (" + saved.getCheckInDate()
+                        + " to " + saved.getCheckOutDate() + "). The rest of your package booking is unaffected."
+                : "The reservation at " + accommodation.getName() + " from " + saved.getCheckInDate() + " to "
+                        + saved.getCheckOutDate() + " was cancelled.";
         notifyUser(byTourist ? accommodation.getOwner() : saved.getTourist(), currentUser,
-                NotificationType.ROOM_RESERVATION_CANCELLED, "Reservation cancelled",
-                "The reservation at " + accommodation.getName() + " from " + saved.getCheckInDate() + " to "
-                        + saved.getCheckOutDate() + " was cancelled.",
+                NotificationType.ROOM_RESERVATION_CANCELLED, "Reservation cancelled", message,
                 byTourist ? "/accommodations/owner/reservations" : "/reservations/mine");
         return toResponse(saved);
+    }
+
+    @Override
+    public CancellationPreviewResponseDto getCancellationPreview(Long id, User currentUser) {
+        RoomReservation reservation = getEntity(id);
+        assertTouristOrOwnerOrAdmin(reservation, currentUser);
+        boolean byTourist = reservation.getTourist().getId().equals(currentUser.getId());
+        if (byTourist || !isOwnerOrAdmin(reservation, currentUser)) {
+            assertNotPartOfActiveBooking(reservation, "cancelled");
+        }
+
+        int refundPercent = refundPercentFor(reservation, byTourist);
+        Payment succeeded = findSucceededPayment(reservation);
+
+        return CancellationPreviewResponseDto.builder()
+                .refundPercent(refundPercent)
+                .refundAmount(succeeded == null ? BigDecimal.ZERO : refundAmountFor(succeeded, refundPercent))
+                .ruleText(byTourist ? cancellationPolicy.describeRule(reservation.getCheckInDate())
+                        : "Cancelled by the property: full refund.")
+                .hasPayment(succeeded != null)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public int cancelForAccommodation(Long accommodationId, Set<RoomReservationStatus> statuses, String reason) {
+        LocalDate today = LocalDate.now();
+        int cancelled = 0;
+        for (RoomReservation reservation
+                : roomReservationRepository.findByRoomAccommodationIdAndStatusIn(accommodationId, statuses)) {
+            boolean stayOver = !reservation.getCheckOutDate().isAfter(today);
+            // A finished stay that was paid for stays as it is; one that was never paid is just stale.
+            if (stayOver && reservation.getStatus() != RoomReservationStatus.PENDING) {
+                continue;
+            }
+            if (isLinkedToActiveBooking(reservation)) {
+                if (!stayOver) {
+                    refundLinkedShare(reservation);
+                }
+            } else {
+                applyRefund(reservation, 100);
+            }
+            reservation.setStatus(RoomReservationStatus.CANCELLED);
+            roomReservationRepository.save(reservation);
+            cancelled++;
+            notificationService.notify(reservation.getTourist(), NotificationType.ROOM_RESERVATION_CANCELLED,
+                    "Reservation cancelled", "Your reservation at "
+                            + reservation.getRoom().getAccommodation().getName() + " from "
+                            + reservation.getCheckInDate() + " to " + reservation.getCheckOutDate()
+                            + " was cancelled: " + reason + " Any payment is being refunded in full.",
+                    "/reservations/mine");
+        }
+        return cancelled;
+    }
+
+    private boolean isOwnerOrAdmin(RoomReservation reservation, User user) {
+        return user.getRole() == Role.ADMIN
+                || reservation.getRoom().getAccommodation().getOwner().getId().equals(user.getId());
+    }
+
+    private boolean isLinkedToActiveBooking(RoomReservation reservation) {
+        Booking booking = reservation.getBooking();
+        return booking != null && !BookingStatus.TERMINAL.contains(booking.getStatus());
+    }
+
+    /**
+     * A linked add-on has no payment of its own; its share was paid inside the package booking's payment.
+     * {@link Payment} records a single refund total and {@link RefundGateway#refund} moves the whole payment to
+     * REFUNDED, so a partial refund now would block (or double-count against) the refund of the booking itself.
+     * Until payments can track several partial refunds, the share is refunded by hand: the tourist and every
+     * admin are told. A booking with no SUCCEEDED payment has nothing to refund, so nobody is notified.
+     */
+    private void refundLinkedShare(RoomReservation reservation) {
+        Booking booking = reservation.getBooking();
+        boolean paid = paymentRepository.findByPayableTypeAndPayableId(PayableType.BOOKING, booking.getId())
+                .stream().anyMatch(p -> p.getStatus() == PaymentStatus.SUCCEEDED);
+        if (!paid) {
+            return;
+        }
+        Accommodation accommodation = reservation.getRoom().getAccommodation();
+        BigDecimal share = reservation.getTotalPrice() != null ? reservation.getTotalPrice()
+                : priceOf(reservation.getRoom().getPricePerNight(), reservation.getCheckInDate(),
+                        reservation.getCheckOutDate(), reservation.getNumberOfRooms());
+        notificationService.notify(reservation.getTourist(), NotificationType.PAYMENT_REFUNDED,
+                "Refund for cancelled room", "Your room at " + accommodation.getName() + " in package booking #"
+                        + booking.getId() + " was cancelled. Its share (" + share + ") will be refunded to you "
+                        + "manually; our team has been notified.", "/payments/mine");
+        notificationService.notifyAdmins(NotificationType.PAYMENT_REFUNDED, "Manual refund needed",
+                "Room reservation #" + reservation.getId() + " (" + accommodation.getName()
+                        + ") in package booking #" + booking.getId() + " was cancelled. Refund " + share
+                        + " to " + reservation.getTourist().getName() + " manually.", "/payments");
+    }
+
+    /** 100% unless the tourist is the one cancelling (then the check-in-date policy applies). */
+    private int refundPercentFor(RoomReservation reservation, boolean byTourist) {
+        return byTourist ? cancellationPolicy.resolveRefundPercent(reservation.getCheckInDate()) : 100;
+    }
+
+    /**
+     * A SUCCEEDED payment is refunded by {@code refundPercent} (0% leaves it SUCCEEDED); one that never
+     * completed is marked CANCELLED. Mirrors {@code BookingServiceImpl#applyCancellationRefund}.
+     */
+    private void applyRefund(RoomReservation reservation, int refundPercent) {
+        for (Payment payment : paymentRepository
+                .findByPayableTypeAndPayableId(PayableType.ROOM_RESERVATION, reservation.getId())) {
+            if (payment.getStatus() == PaymentStatus.SUCCEEDED) {
+                if (refundPercent > 0) {
+                    refundGateway.refund(payment, refundAmountFor(payment, refundPercent));
+                }
+            } else if (payment.getStatus() == PaymentStatus.PENDING) {
+                refundGateway.cancelUncompletedPayment(payment);
+            }
+        }
+    }
+
+    private Payment findSucceededPayment(RoomReservation reservation) {
+        return paymentRepository.findByPayableTypeAndPayableId(PayableType.ROOM_RESERVATION, reservation.getId())
+                .stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCEEDED)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private BigDecimal refundAmountFor(Payment payment, int refundPercent) {
+        return payment.getAmount()
+                .multiply(BigDecimal.valueOf(refundPercent))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
     @Override
@@ -196,7 +349,7 @@ public class RoomReservationServiceImpl implements RoomReservationService {
                 continue;
             }
             try {
-                doConfirm(reservation, getLockedRoom(reservation.getRoom().getId()), null);
+                doConfirm(reservation, getLockedRoom(reservation.getRoom().getId()));
             } catch (RuntimeException ex) {
                 log.error("Booking {} was paid but confirming its room reservation {} failed — needs manual review",
                         bookingId, reservation.getId(), ex);
@@ -257,6 +410,10 @@ public class RoomReservationServiceImpl implements RoomReservationService {
         RoomReservation reservation = getEntity(id);
         assertOwnerOrAdmin(reservation.getRoom().getAccommodation(), currentUser);
         assertStatus(reservation, RoomReservationStatus.CONFIRMED, "completed");
+        if (LocalDate.now().isBefore(reservation.getCheckInDate())) {
+            throw new BadRequestException("A reservation can only be completed on or after its check-in date ("
+                    + reservation.getCheckInDate() + ")");
+        }
 
         reservation.setStatus(RoomReservationStatus.COMPLETED);
         RoomReservation saved = roomReservationRepository.save(reservation);
@@ -315,6 +472,22 @@ public class RoomReservationServiceImpl implements RoomReservationService {
         }
     }
 
+    /** A property that is archived, inactive or paused can't take (or finish taking) a payment. */
+    private void assertOpenForPayment(Accommodation accommodation) {
+        if (accommodation.getStatus() != AccommodationStatus.ACTIVE
+                && accommodation.getStatus() != AccommodationStatus.FULLY_BOOKED) {
+            throw new BadRequestException(accommodation.getStatus() == AccommodationStatus.TEMPORARILY_UNAVAILABLE
+                    ? "This accommodation has paused reservations, so this one can't be paid until it resumes"
+                    : "This accommodation is no longer open for reservations, so this one can't be paid");
+        }
+    }
+
+    private BigDecimal priceOf(BigDecimal pricePerNight, LocalDate checkIn, LocalDate checkOut, int numberOfRooms) {
+        return pricePerNight
+                .multiply(BigDecimal.valueOf(ChronoUnit.DAYS.between(checkIn, checkOut)))
+                .multiply(BigDecimal.valueOf(numberOfRooms));
+    }
+
     /** In-app notice; skipped when the recipient is the person who just did it. */
     private void notifyUser(User recipient, User actor, NotificationType type, String title, String message,
                             String link) {
@@ -361,6 +534,17 @@ public class RoomReservationServiceImpl implements RoomReservationService {
         }
     }
 
+    /** First non-blank image of the room, else of the property, else null. */
+    private static String firstImage(java.util.List<String> roomImages, java.util.List<String> propertyImages) {
+        for (java.util.List<String> images : java.util.Arrays.asList(roomImages, propertyImages)) {
+            if (images == null) continue;
+            for (String url : images) {
+                if (url != null && !url.isBlank()) return url;
+            }
+        }
+        return null;
+    }
+
     private RoomReservationResponseDto toResponse(RoomReservation reservation) {
         Room room = reservation.getRoom();
         Accommodation accommodation = room.getAccommodation();
@@ -372,6 +556,8 @@ public class RoomReservationServiceImpl implements RoomReservationService {
                 .accommodationId(accommodation.getId())
                 .accommodationName(accommodation.getName())
                 .accommodationLocation(accommodation.getLocation().getName())
+                .accommodationStatus(accommodation.getStatus())
+                .coverImageUrl(firstImage(room.getImageUrls(), accommodation.getImageUrls()))
                 .build();
 
         return RoomReservationResponseDto.builder()
@@ -382,6 +568,11 @@ public class RoomReservationServiceImpl implements RoomReservationService {
                 .checkInDate(reservation.getCheckInDate())
                 .checkOutDate(reservation.getCheckOutDate())
                 .numberOfRooms(reservation.getNumberOfRooms())
+                .numberOfGuests(reservation.getNumberOfGuests())
+                // Frozen price; legacy rows (null) fall back to the live room price.
+                .totalPrice(reservation.getTotalPrice() != null ? reservation.getTotalPrice()
+                        : priceOf(room.getPricePerNight(), reservation.getCheckInDate(),
+                                reservation.getCheckOutDate(), reservation.getNumberOfRooms()))
                 .status(reservation.getStatus())
                 .bookingId(reservation.getBooking() == null ? null : reservation.getBooking().getId())
                 .packageTitle(reservation.getBooking() == null ? null

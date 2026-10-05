@@ -89,6 +89,13 @@ app:
     full-refund-min-days: 7
     partial-refund-min-days: 3
     partial-refund-percent: 50
+  room-cancellation:
+    # Same tiers for cancelling a standalone room reservation, by days
+    # between "now" and its check-in date. Owner/admin cancellations always
+    # refund 100%.
+    full-refund-min-days: 7
+    partial-refund-min-days: 2
+    partial-refund-percent: 50
 
 stripe:
   # Test-mode keys from dashboard.stripe.com — see frontend/README.md (Payments section)

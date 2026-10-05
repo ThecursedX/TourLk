@@ -136,7 +136,7 @@ export default function RegisterPage() {
             onChange={(e) => setValues((v) => ({ ...v, role: e.target.value as Role }))}
             error={fieldErrors.role}
           >
-            {ROLES.map((role) => (
+            {ROLES.filter((role) => role !== 'ADMIN').map((role) => (
               <option key={role} value={role}>
                 {role}
               </option>

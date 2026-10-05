@@ -47,6 +47,14 @@ public interface RoomReservationRepository extends JpaRepository<RoomReservation
                                      @Param("checkOutDate") LocalDate checkOutDate,
                                      @Param("excludeId") Long excludeId);
 
+    /** Stays of a room still holding rooms (in {@code statuses}) that end after {@code date}. */
+    List<RoomReservation> findByRoomIdAndStatusInAndCheckOutDateAfter(Long roomId,
+                                                                      Collection<RoomReservationStatus> statuses,
+                                                                      LocalDate date);
+
+    List<RoomReservation> findByRoomAccommodationIdAndStatusIn(Long accommodationId,
+                                                               Collection<RoomReservationStatus> statuses);
+
     List<RoomReservation> findByStatusAndCreatedAtBefore(RoomReservationStatus status,
                                                          java.time.LocalDateTime cutoff);
 

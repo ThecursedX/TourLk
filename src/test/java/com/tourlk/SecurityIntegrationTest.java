@@ -131,6 +131,12 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void register_adminRole_returnsBadRequest() throws Exception {
+        mvc.perform(register("wannabe-admin@example.com", "ADMIN"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void register_duplicateEmail_returnsBadRequest() throws Exception {
         mvc.perform(register("dupe@example.com", "TOURIST")).andExpect(status().isCreated());
 

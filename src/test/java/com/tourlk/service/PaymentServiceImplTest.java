@@ -13,12 +13,14 @@ import com.tourlk.dto.VehicleHireResponseDto;
 import com.tourlk.entity.Invoice;
 import com.tourlk.entity.Payment;
 import com.tourlk.entity.User;
+import com.tourlk.enums.AccommodationStatus;
 import com.tourlk.enums.BookingStatus;
 import com.tourlk.enums.PayableType;
 import com.tourlk.enums.PaymentStatus;
 import com.tourlk.enums.Role;
 import com.tourlk.enums.RoomReservationStatus;
 import com.tourlk.enums.VehicleHireStatus;
+import com.tourlk.exception.BadRequestException;
 import com.tourlk.exception.InvalidStatusTransitionException;
 import com.tourlk.exception.PaymentAmountMismatchException;
 import com.tourlk.exception.PaymentRequiredException;
@@ -156,6 +158,84 @@ class PaymentServiceImplTest {
             ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
             verify(paymentRepository).save(paymentCaptor.capture());
             assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00");
+        }
+
+        @Test
+        void createPaymentIntent_roomReservation_chargesTheFrozenTotalNotTheLivePrice() {
+            // Stored 300.00 at reservation time; the room has since gone up to 90.00/night (would be 540.00).
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation("300.00", "90.00", AccommodationStatus.ACTIVE));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+            verify(paymentRepository).save(paymentCaptor.capture());
+            assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00");
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationWithoutFrozenTotal_fallsBackToLivePrice() {
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation(null, "50.00", AccommodationStatus.ACTIVE));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            ArgumentCaptor<Payment> paymentCaptor = ArgumentCaptor.forClass(Payment.class);
+            verify(paymentRepository).save(paymentCaptor.capture());
+            assertThat(paymentCaptor.getValue().getAmount()).isEqualByComparingTo("300.00"); // 50 x 3 x 2
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationOnInactiveProperty_isRefused() {
+            for (AccommodationStatus status : java.util.List.of(AccommodationStatus.INACTIVE,
+                    AccommodationStatus.ARCHIVED, AccommodationStatus.TEMPORARILY_UNAVAILABLE)) {
+                when(roomReservationService.getReservationById(20L, tourist))
+                        .thenReturn(frozenReservation("300.00", "50.00", status));
+                PaymentRequestDto request =
+                        new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+                assertThatThrownBy(() -> paymentService.createPaymentIntent(request, tourist))
+                        .as("property status %s", status)
+                        .isInstanceOf(BadRequestException.class);
+            }
+            verify(paymentRepository, never()).save(any());
+        }
+
+        @Test
+        void createPaymentIntent_roomReservationOnFullyBookedProperty_isAllowed() {
+            when(roomReservationService.getReservationById(20L, tourist))
+                    .thenReturn(frozenReservation("300.00", "50.00", AccommodationStatus.FULLY_BOOKED));
+            when(paymentRepository.save(any(Payment.class)))
+                    .thenAnswer(inv -> withId(inv.getArgument(0), 78L));
+
+            PaymentIntent intent = stripeIntent("pi_res", "cs_res");
+            PaymentRequestDto request =
+                    new PaymentRequestDto(PayableType.ROOM_RESERVATION, 20L, new BigDecimal("300.00"), null);
+
+            try (MockedStatic<PaymentIntent> stripe = mockStatic(PaymentIntent.class)) {
+                stripe.when(() -> PaymentIntent.create(any(PaymentIntentCreateParams.class))).thenReturn(intent);
+                paymentService.createPaymentIntent(request, tourist);
+            }
+
+            verify(paymentRepository).save(any(Payment.class));
         }
 
         @Test
@@ -520,8 +600,18 @@ class PaymentServiceImplTest {
                         .id(3L)
                         .roomType("Deluxe")
                         .pricePerNight(new BigDecimal(pricePerNight))
+                        .accommodationStatus(AccommodationStatus.ACTIVE)
                         .build())
                 .build();
+    }
+
+    private RoomReservationResponseDto frozenReservation(String frozenTotal, String livePricePerNight,
+                                                         AccommodationStatus propertyStatus) {
+        RoomReservationResponseDto dto = reservation(1L, RoomReservationStatus.PENDING, livePricePerNight, 2,
+                LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 4));
+        dto.setTotalPrice(frozenTotal == null ? null : new BigDecimal(frozenTotal));
+        dto.getRoom().setAccommodationStatus(propertyStatus);
+        return dto;
     }
 
     private VehicleHireResponseDto hire(Long touristId, VehicleHireStatus status, String totalPrice) {

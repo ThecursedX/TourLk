@@ -26,5 +26,7 @@ public class VehicleSummaryDto {
     private String model;
     private String registrationNumber;
     private BigDecimal pricePerDay;
+    /** The vehicle's first image, or null when it has none. */
+    private String coverImageUrl;
 
 }
