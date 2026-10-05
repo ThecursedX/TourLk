@@ -9,8 +9,8 @@ import type {
 /** Public — published and temporarily closed destinations. Optional `search`, `province` or `nearby`+`radiusKm` filter. */
 export function browseDestinations(params?: DestinationBrowseParams) {
   return axiosClient
-    .get<DestinationResponseDto[]>('/destinations', { params })
-    .then((res) => res.data)
+      .get<DestinationResponseDto[]>('/destinations', { params })
+      .then((res) => res.data)
 }
 
 export function getDestinationById(id: number) {

@@ -20,7 +20,7 @@ const STATUS_LABELS: Record<DestinationStatus, string> = {
 
 export default function DestinationStatusBadge({ status }: { status: DestinationStatus }) {
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASSES[status]}`}>
+      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASSES[status]}`}>
       {STATUS_LABELS[status]}
     </span>
   )

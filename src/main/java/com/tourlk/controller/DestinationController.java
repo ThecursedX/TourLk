@@ -47,7 +47,7 @@ public class DestinationController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DestinationResponseDto> update(@PathVariable Long id,
-                                                          @Valid @RequestBody DestinationRequestDto request) {
+                                                         @Valid @RequestBody DestinationRequestDto request) {
         return ResponseEntity.ok(destinationService.updateDestination(id, request));
     }
 
@@ -66,7 +66,7 @@ public class DestinationController {
     @PutMapping("/{id}/close")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DestinationResponseDto> close(@PathVariable Long id,
-                                                         @Valid @RequestBody DestinationClosureRequestDto request) {
+                                                        @Valid @RequestBody DestinationClosureRequestDto request) {
         return ResponseEntity.ok(destinationService.closeTemporarily(id, request.getReason(), request.getUntil()));
     }
 

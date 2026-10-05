@@ -28,45 +28,45 @@ interface DestinationSelectProps {
  * destination id.
  */
 export default function DestinationSelect({
-  id = 'destination',
-  label,
-  value,
-  onChange,
-  error,
-  disabled,
-  placeholder = 'Select a destination',
-  currentOption,
-}: DestinationSelectProps) {
+                                            id = 'destination',
+                                            label,
+                                            value,
+                                            onChange,
+                                            error,
+                                            disabled,
+                                            placeholder = 'Select a destination',
+                                            currentOption,
+                                          }: DestinationSelectProps) {
   const [destinations, setDestinations] = useState<DestinationResponseDto[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     browseDestinations()
-      .then(setDestinations)
-      .catch(() => setLoadError('Could not load destinations.'))
+        .then(setDestinations)
+        .catch(() => setLoadError('Could not load destinations.'))
   }, [])
 
   const activeIds = new Set(destinations.map((d) => d.id))
   const showStaleCurrent = currentOption != null && !activeIds.has(currentOption.id)
 
   return (
-    <Select
-      id={id}
-      label={label}
-      value={value === '' ? '' : String(value)}
-      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-      error={error ?? loadError ?? undefined}
-      disabled={disabled}
-    >
-      <option value="">{placeholder}</option>
-      {showStaleCurrent && (
-        <option value={currentOption!.id}>{currentOption!.name} (inactive)</option>
-      )}
-      {destinations.map((d) => (
-        <option key={d.id} value={d.id}>
-          {d.name} — {d.district}, {formatProvince(d.province)}
-        </option>
-      ))}
-    </Select>
+      <Select
+          id={id}
+          label={label}
+          value={value === '' ? '' : String(value)}
+          onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+          error={error ?? loadError ?? undefined}
+          disabled={disabled}
+      >
+        <option value="">{placeholder}</option>
+        {showStaleCurrent && (
+            <option value={currentOption!.id}>{currentOption!.name} (inactive)</option>
+        )}
+        {destinations.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name} — {d.district}, {formatProvince(d.province)}
+            </option>
+        ))}
+      </Select>
   )
 }

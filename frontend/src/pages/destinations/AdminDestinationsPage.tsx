@@ -35,16 +35,16 @@ const STATUS_FILTER_OPTIONS: { value: DestinationStatus; label: string }[] = [
 ]
 
 const dangerOutline =
-  '!border-red-300 !text-red-600 hover:!border-red-400 hover:!bg-red-50 disabled:!text-slate-400 disabled:!border-slate-200'
+    '!border-red-300 !text-red-600 hover:!border-red-400 hover:!bg-red-50 disabled:!text-slate-400 disabled:!border-slate-200'
 
 function Thumbnail({ url, name }: { url?: string; name: string }) {
   const [failed, setFailed] = useState(false)
   if (!url || failed) {
     return (
-      <span
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"
-        aria-hidden="true"
-      >
+        <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"
+            aria-hidden="true"
+        >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
           <rect x="3" y="4" width="18" height="16" rx="3" />
           <circle cx="9" cy="10" r="1.8" />
@@ -54,12 +54,12 @@ function Thumbnail({ url, name }: { url?: string; name: string }) {
     )
   }
   return (
-    <img
-      src={url}
-      alt={name}
-      className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 object-cover"
-      onError={() => setFailed(true)}
-    />
+      <img
+          src={url}
+          alt={name}
+          className="h-11 w-11 shrink-0 rounded-xl border border-slate-200 object-cover"
+          onError={() => setFailed(true)}
+      />
   )
 }
 
@@ -104,48 +104,48 @@ function RowMenu({ items, disabled }: { items: MenuItem[]; disabled?: boolean })
   }
 
   return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        disabled={disabled}
-        aria-haspopup="menu"
-        aria-expanded={pos !== null}
-        aria-label="More actions"
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={toggle}
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-      >
+      <>
+        <button
+            ref={buttonRef}
+            type="button"
+            disabled={disabled}
+            aria-haspopup="menu"
+            aria-expanded={pos !== null}
+            aria-label="More actions"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={toggle}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+        >
         <span aria-hidden="true" className="text-lg leading-none">
           &hellip;
         </span>
-      </button>
-      {pos && (
-        <div
-          role="menu"
-          style={{ top: pos.top, right: pos.right }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="fixed z-50 flex min-w-44 flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-soft"
-        >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setPos(null)
-                item.onClick()
-              }}
-              className={`rounded-xl px-3 py-2 text-left text-sm font-medium hover:bg-slate-50 ${
-                item.danger ? 'text-red-600' : 'text-slate-700'
-              }`}
+        </button>
+        {pos && (
+            <div
+                role="menu"
+                style={{ top: pos.top, right: pos.right }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="fixed z-50 flex min-w-44 flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-soft"
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </>
+              {items.map((item) => (
+                  <button
+                      key={item.label}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setPos(null)
+                        item.onClick()
+                      }}
+                      className={`rounded-xl px-3 py-2 text-left text-sm font-medium hover:bg-slate-50 ${
+                          item.danger ? 'text-red-600' : 'text-slate-700'
+                      }`}
+                  >
+                    {item.label}
+                  </button>
+              ))}
+            </div>
+        )}
+      </>
   )
 }
 
@@ -184,12 +184,12 @@ export default function AdminDestinationsPage() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return destinations.filter(
-      (d) =>
-        (!statusFilter || d.status === statusFilter) &&
-        (!term ||
-          d.name.toLowerCase().includes(term) ||
-          d.district.toLowerCase().includes(term) ||
-          d.category.toLowerCase().includes(term)),
+        (d) =>
+            (!statusFilter || d.status === statusFilter) &&
+            (!term ||
+                d.name.toLowerCase().includes(term) ||
+                d.district.toLowerCase().includes(term) ||
+                d.category.toLowerCase().includes(term)),
     )
   }, [destinations, search, statusFilter])
 
@@ -197,9 +197,9 @@ export default function AdminDestinationsPage() {
     setLoading(true)
     setError(null)
     getAllDestinations()
-      .then(setDestinations)
-      .catch(() => setError('Could not load destinations. Please try again later.'))
-      .finally(() => setLoading(false))
+        .then(setDestinations)
+        .catch(() => setError('Could not load destinations. Please try again later.'))
+        .finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -226,9 +226,9 @@ export default function AdminDestinationsPage() {
       setDestinations((prev) => prev.map((d) => (d.id === updated.id ? updated : d)))
     } catch (err) {
       setActionError(
-        isAxiosError<ErrorResponse>(err) && err.response?.data?.message
-          ? err.response.data.message
-          : 'That action could not be completed. Please try again.',
+          isAxiosError<ErrorResponse>(err) && err.response?.data?.message
+              ? err.response.data.message
+              : 'That action could not be completed. Please try again.',
       )
     } finally {
       setBusyId(null)
@@ -256,9 +256,9 @@ export default function AdminDestinationsPage() {
       setClosingId(null)
     } catch (err) {
       setCloseError(
-        isAxiosError<ErrorResponse>(err) && err.response?.data?.message
-          ? err.response.data.message
-          : 'The destination could not be closed. Please try again.',
+          isAxiosError<ErrorResponse>(err) && err.response?.data?.message
+              ? err.response.data.message
+              : 'The destination could not be closed. Please try again.',
       )
     } finally {
       setBusyId(null)
@@ -272,283 +272,283 @@ export default function AdminDestinationsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Manage Destinations</h1>
-          <p className="mt-1 text-slate-600">Curate the list of places tourists can browse and filter by.</p>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">Manage Destinations</h1>
+            <p className="mt-1 text-slate-600">Curate the list of places tourists can browse and filter by.</p>
+          </div>
+          <Button onClick={() => setCreating(true)} disabled={creating}>
+            + New Destination
+          </Button>
         </div>
-        <Button onClick={() => setCreating(true)} disabled={creating}>
-          + New Destination
-        </Button>
-      </div>
 
-      <div
-        className={`grid transition-all duration-300 ease-in-out ${
-          creating ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        }`}
-        aria-hidden={!creating}
-      >
-        <div className="overflow-hidden">
-          {formMounted && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="text-lg font-semibold text-slate-900">New Destination</h2>
-              <p className="mb-5 mt-1 text-sm text-slate-600">
-                Add a place for tourists to discover. You can save it as a draft and publish it later.
-              </p>
-              <DestinationForm
-                key={formKey}
-                onSubmit={handleCreate}
-                onCancel={() => setCreating(false)}
-                submitLabel="Create Destination"
-                submittingLabel="Creating..."
+        <div
+            className={`grid transition-all duration-300 ease-in-out ${
+                creating ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+            aria-hidden={!creating}
+        >
+          <div className="overflow-hidden">
+            {formMounted && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+                  <h2 className="text-lg font-semibold text-slate-900">New Destination</h2>
+                  <p className="mb-5 mt-1 text-sm text-slate-600">
+                    Add a place for tourists to discover. You can save it as a draft and publish it later.
+                  </p>
+                  <DestinationForm
+                      key={formKey}
+                      onSubmit={handleCreate}
+                      onCancel={() => setCreating(false)}
+                      submitLabel="Create Destination"
+                      submittingLabel="Creating..."
+                  />
+                </div>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="text-red-600">{error}</p>}
+        {actionError && <p className="text-red-600">{actionError}</p>}
+
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
+            <div className="min-w-48 flex-1">
+              <Input
+                  id="destination-search"
+                  type="search"
+                  placeholder="Search name, district or category"
+                  aria-label="Search destinations"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-          )}
-        </div>
-      </div>
-
-      {error && <p className="text-red-600">{error}</p>}
-      {actionError && <p className="text-red-600">{actionError}</p>}
-
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
-          <div className="min-w-48 flex-1">
-            <Input
-              id="destination-search"
-              type="search"
-              placeholder="Search name, district or category"
-              aria-label="Search destinations"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Select
-            id="destination-status-filter"
-            aria-label="Filter by status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as DestinationStatus | '')}
-          >
-            <option value="">All statuses</option>
-            {STATUS_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-          <span className="text-sm text-slate-500">
+            <Select
+                id="destination-status-filter"
+                aria-label="Filter by status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as DestinationStatus | '')}
+            >
+              <option value="">All statuses</option>
+              {STATUS_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+              ))}
+            </Select>
+            <span className="text-sm text-slate-500">
             {filtered.length} destination{filtered.length === 1 ? '' : 's'}
           </span>
-        </div>
+          </div>
 
-        {loading && <p className="p-6 text-slate-600">Loading...</p>}
+          {loading && <p className="p-6 text-slate-600">Loading...</p>}
 
-        {!loading && !error && destinations.length === 0 && (
-          <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+          {!loading && !error && destinations.length === 0 && (
+              <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cobalt-50 text-cobalt-600">
               <svg
-                width="32"
-                height="32"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                aria-hidden="true"
+                  width="32"
+                  height="32"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  aria-hidden="true"
               >
                 <path d="M12 21s7-6.2 7-11.5A7 7 0 005 9.5C5 14.8 12 21 12 21z" strokeLinejoin="round" />
                 <circle cx="12" cy="9.5" r="2.5" />
               </svg>
             </span>
-            <p className="text-lg font-semibold text-slate-900">No destinations yet</p>
-            <p className="max-w-sm text-sm text-slate-600">
-              Destinations are the places tourists browse and attach packages and stays to. Start with your first one.
-            </p>
-            <Button onClick={() => setCreating(true)}>Create the first destination</Button>
-          </div>
-        )}
+                <p className="text-lg font-semibold text-slate-900">No destinations yet</p>
+                <p className="max-w-sm text-sm text-slate-600">
+                  Destinations are the places tourists browse and attach packages and stays to. Start with your first one.
+                </p>
+                <Button onClick={() => setCreating(true)}>Create the first destination</Button>
+              </div>
+          )}
 
-        {!loading && !error && destinations.length > 0 && filtered.length === 0 && (
-          <p className="px-6 py-10 text-center text-slate-600">No destinations match your search or filter.</p>
-        )}
+          {!loading && !error && destinations.length > 0 && filtered.length === 0 && (
+              <p className="px-6 py-10 text-center text-slate-600">No destinations match your search or filter.</p>
+          )}
 
-        {!loading && !error && filtered.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Province / District</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Packages</th>
-                  <th className="px-4 py-3 text-right">Hotels</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((destination) => {
-                  const busy = busyId === destination.id
-                  if (editingId === destination.id) {
-                    return (
-                      <tr key={destination.id}>
-                        <td colSpan={6} className="bg-slate-50 px-4 py-6">
-                          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-                            <h2 className="text-lg font-semibold text-slate-900">Edit {destination.name}</h2>
-                            <p className="mb-5 mt-1 text-sm text-slate-600">Update the details shown to tourists.</p>
-                            <DestinationForm
-                              initialValues={{
-                                name: destination.name,
-                                description: destination.description ?? '',
-                                province: destination.province,
-                                district: destination.district,
-                                category: destination.category,
-                                bestTimeToVisit: destination.bestTimeToVisit ?? '',
-                                imageUrls: destination.imageUrls,
-                                openingHours: destination.openingHours ?? '',
-                                entryFee: destination.entryFee,
-                                visitorRules: destination.visitorRules ?? '',
-                                latitude: destination.latitude,
-                                longitude: destination.longitude,
-                              }}
-                              onSubmit={(values) => handleUpdate(destination.id, values)}
-                              onCancel={() => setEditingId(null)}
-                              submitLabel="Save Changes"
-                              submittingLabel="Saving..."
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  }
+          {!loading && !error && filtered.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Province / District</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Packages</th>
+                    <th className="px-4 py-3 text-right">Hotels</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                  {filtered.map((destination) => {
+                    const busy = busyId === destination.id
+                    if (editingId === destination.id) {
+                      return (
+                          <tr key={destination.id}>
+                            <td colSpan={6} className="bg-slate-50 px-4 py-6">
+                              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+                                <h2 className="text-lg font-semibold text-slate-900">Edit {destination.name}</h2>
+                                <p className="mb-5 mt-1 text-sm text-slate-600">Update the details shown to tourists.</p>
+                                <DestinationForm
+                                    initialValues={{
+                                      name: destination.name,
+                                      description: destination.description ?? '',
+                                      province: destination.province,
+                                      district: destination.district,
+                                      category: destination.category,
+                                      bestTimeToVisit: destination.bestTimeToVisit ?? '',
+                                      imageUrls: destination.imageUrls,
+                                      openingHours: destination.openingHours ?? '',
+                                      entryFee: destination.entryFee,
+                                      visitorRules: destination.visitorRules ?? '',
+                                      latitude: destination.latitude,
+                                      longitude: destination.longitude,
+                                    }}
+                                    onSubmit={(values) => handleUpdate(destination.id, values)}
+                                    onCancel={() => setEditingId(null)}
+                                    submitLabel="Save Changes"
+                                    submittingLabel="Saving..."
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                      )
+                    }
 
-                  const status = destination.status
-                  const menuItems: MenuItem[] = []
-                  if (status === 'DRAFT') {
-                    menuItems.push({
-                      label: 'Submit for review',
-                      onClick: () => void runAction(destination.id, submitDestinationForReview),
-                    })
-                  }
-                  if (status === 'PUBLISHED' || status === 'TEMPORARILY_CLOSED') {
-                    menuItems.push({
-                      label: status === 'PUBLISHED' ? 'Close temporarily' : 'Update closure',
-                      onClick: () => startClosing(destination.id),
-                    })
-                    menuItems.push({
-                      label: 'Deactivate',
-                      danger: true,
-                      onClick: () => void runAction(destination.id, deactivateDestination),
-                    })
-                  }
+                    const status = destination.status
+                    const menuItems: MenuItem[] = []
+                    if (status === 'DRAFT') {
+                      menuItems.push({
+                        label: 'Submit for review',
+                        onClick: () => void runAction(destination.id, submitDestinationForReview),
+                      })
+                    }
+                    if (status === 'PUBLISHED' || status === 'TEMPORARILY_CLOSED') {
+                      menuItems.push({
+                        label: status === 'PUBLISHED' ? 'Close temporarily' : 'Update closure',
+                        onClick: () => startClosing(destination.id),
+                      })
+                      menuItems.push({
+                        label: 'Deactivate',
+                        danger: true,
+                        onClick: () => void runAction(destination.id, deactivateDestination),
+                      })
+                    }
 
-                  return [
-                    <tr key={destination.id} className="text-slate-700 hover:bg-slate-50">
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <Thumbnail url={destination.imageUrls?.[0]} name={destination.name} />
-                          <div>
-                            <p className="font-medium text-slate-900">{destination.name}</p>
-                            <p className="text-xs text-slate-500">{destination.category}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        {formatProvince(destination.province)} / {destination.district}
-                      </td>
-                      <td className="px-4 py-4">
-                        <DestinationStatusBadge status={status} />
-                        {status === 'TEMPORARILY_CLOSED' && destination.closureReason && (
-                          <p className="mt-1 max-w-xs text-xs text-slate-500">
-                            {destination.closureReason}
-                            {destination.closureUntil ? ` (until ${destination.closureUntil})` : ''}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-right">{destination.activePackageCount ?? '—'}</td>
-                      <td className="px-4 py-4 text-right">{destination.activeAccommodationCount ?? '—'}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="secondary" disabled={busy} onClick={() => setEditingId(destination.id)}>
-                            Edit
-                          </Button>
-                          {(status === 'DRAFT' || status === 'PENDING_REVIEW') && (
-                            <Button disabled={busy} onClick={() => runAction(destination.id, publishDestination)}>
-                              Publish
-                            </Button>
-                          )}
-                          {status === 'TEMPORARILY_CLOSED' && (
-                            <Button
-                              variant="secondary"
-                              disabled={busy}
-                              onClick={() => runAction(destination.id, reopenDestination)}
-                            >
-                              Reopen
-                            </Button>
-                          )}
-                          {(status === 'INACTIVE' || status === 'ARCHIVED') && (
-                            <Button
-                              variant="secondary"
-                              disabled={busy}
-                              onClick={() => runAction(destination.id, reactivateDestination)}
-                            >
-                              {status === 'ARCHIVED' ? 'Restore' : 'Reactivate'}
-                            </Button>
-                          )}
-                          {status !== 'ARCHIVED' && (
-                            <Button
-                              variant="secondary"
-                              className={dangerOutline}
-                              disabled={busy}
-                              onClick={() => confirmArchive(destination.id)}
-                            >
-                              Archive
-                            </Button>
-                          )}
-                          <RowMenu items={menuItems} disabled={busy} />
-                        </div>
-                      </td>
-                    </tr>,
-                    closingId === destination.id && (
-                      <tr key={`${destination.id}-close`}>
-                        <td colSpan={6} className="bg-orange-50 px-4 py-4">
-                          <form
-                            onSubmit={(e) => handleClose(e, destination.id)}
-                            className="flex flex-wrap items-end gap-3"
-                          >
-                            <div className="w-80 max-w-full">
-                              <Input
-                                id={`closeReason-${destination.id}`}
-                                label="Closure reason"
-                                placeholder="e.g. Bridge repairs"
-                                value={closeReason}
-                                onChange={(e) => setCloseReason(e.target.value)}
-                                maxLength={500}
-                              />
+                    return [
+                      <tr key={destination.id} className="text-slate-700 hover:bg-slate-50">
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <Thumbnail url={destination.imageUrls?.[0]} name={destination.name} />
+                            <div>
+                              <p className="font-medium text-slate-900">{destination.name}</p>
+                              <p className="text-xs text-slate-500">{destination.category}</p>
                             </div>
-                            <Input
-                              id={`closeUntil-${destination.id}`}
-                              label="Closed until (optional)"
-                              type="date"
-                              value={closeUntil}
-                              onChange={(e) => setCloseUntil(e.target.value)}
-                            />
-                            <Button type="submit" disabled={busy}>
-                              Mark as closed
-                            </Button>
-                            <Button type="button" variant="secondary" onClick={() => setClosingId(null)}>
-                              Cancel
-                            </Button>
-                          </form>
-                          {closeError && <p className="mt-2 text-sm text-red-600">{closeError}</p>}
+                          </div>
                         </td>
-                      </tr>
-                    ),
-                  ]
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        <td className="px-4 py-4">
+                          {formatProvince(destination.province)} / {destination.district}
+                        </td>
+                        <td className="px-4 py-4">
+                          <DestinationStatusBadge status={status} />
+                          {status === 'TEMPORARILY_CLOSED' && destination.closureReason && (
+                              <p className="mt-1 max-w-xs text-xs text-slate-500">
+                                {destination.closureReason}
+                                {destination.closureUntil ? ` (until ${destination.closureUntil})` : ''}
+                              </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-right">{destination.activePackageCount ?? '—'}</td>
+                        <td className="px-4 py-4 text-right">{destination.activeAccommodationCount ?? '—'}</td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="secondary" disabled={busy} onClick={() => setEditingId(destination.id)}>
+                              Edit
+                            </Button>
+                            {(status === 'DRAFT' || status === 'PENDING_REVIEW') && (
+                                <Button disabled={busy} onClick={() => runAction(destination.id, publishDestination)}>
+                                  Publish
+                                </Button>
+                            )}
+                            {status === 'TEMPORARILY_CLOSED' && (
+                                <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    onClick={() => runAction(destination.id, reopenDestination)}
+                                >
+                                  Reopen
+                                </Button>
+                            )}
+                            {(status === 'INACTIVE' || status === 'ARCHIVED') && (
+                                <Button
+                                    variant="secondary"
+                                    disabled={busy}
+                                    onClick={() => runAction(destination.id, reactivateDestination)}
+                                >
+                                  {status === 'ARCHIVED' ? 'Restore' : 'Reactivate'}
+                                </Button>
+                            )}
+                            {status !== 'ARCHIVED' && (
+                                <Button
+                                    variant="secondary"
+                                    className={dangerOutline}
+                                    disabled={busy}
+                                    onClick={() => confirmArchive(destination.id)}
+                                >
+                                  Archive
+                                </Button>
+                            )}
+                            <RowMenu items={menuItems} disabled={busy} />
+                          </div>
+                        </td>
+                      </tr>,
+                      closingId === destination.id && (
+                          <tr key={`${destination.id}-close`}>
+                            <td colSpan={6} className="bg-orange-50 px-4 py-4">
+                              <form
+                                  onSubmit={(e) => handleClose(e, destination.id)}
+                                  className="flex flex-wrap items-end gap-3"
+                              >
+                                <div className="w-80 max-w-full">
+                                  <Input
+                                      id={`closeReason-${destination.id}`}
+                                      label="Closure reason"
+                                      placeholder="e.g. Bridge repairs"
+                                      value={closeReason}
+                                      onChange={(e) => setCloseReason(e.target.value)}
+                                      maxLength={500}
+                                  />
+                                </div>
+                                <Input
+                                    id={`closeUntil-${destination.id}`}
+                                    label="Closed until (optional)"
+                                    type="date"
+                                    value={closeUntil}
+                                    onChange={(e) => setCloseUntil(e.target.value)}
+                                />
+                                <Button type="submit" disabled={busy}>
+                                  Mark as closed
+                                </Button>
+                                <Button type="button" variant="secondary" onClick={() => setClosingId(null)}>
+                                  Cancel
+                                </Button>
+                              </form>
+                              {closeError && <p className="mt-2 text-sm text-red-600">{closeError}</p>}
+                            </td>
+                          </tr>
+                      ),
+                    ]
+                  })}
+                  </tbody>
+                </table>
+              </div>
+          )}
+        </div>
       </div>
-    </div>
   )
 }

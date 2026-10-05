@@ -1,10 +1,10 @@
 export type DestinationStatus =
-  | 'DRAFT'
-  | 'PENDING_REVIEW'
-  | 'PUBLISHED'
-  | 'TEMPORARILY_CLOSED'
-  | 'INACTIVE'
-  | 'ARCHIVED'
+    | 'DRAFT'
+    | 'PENDING_REVIEW'
+    | 'PUBLISHED'
+    | 'TEMPORARILY_CLOSED'
+    | 'INACTIVE'
+    | 'ARCHIVED'
 
 /** True when both coordinates are present, i.e. the destination can be placed on a map. */
 export function hasCoordinates(d: { latitude?: number | null; longitude?: number | null }): boolean {
@@ -24,15 +24,15 @@ export function osmLinkUrl(latitude: number, longitude: number): string {
 
 // Matches com.tourlk.enums.Province
 export type Province =
-  | 'WESTERN'
-  | 'CENTRAL'
-  | 'SOUTHERN'
-  | 'NORTHERN'
-  | 'EASTERN'
-  | 'NORTH_WESTERN'
-  | 'NORTH_CENTRAL'
-  | 'UVA'
-  | 'SABARAGAMUWA'
+    | 'WESTERN'
+    | 'CENTRAL'
+    | 'SOUTHERN'
+    | 'NORTHERN'
+    | 'EASTERN'
+    | 'NORTH_WESTERN'
+    | 'NORTH_CENTRAL'
+    | 'UVA'
+    | 'SABARAGAMUWA'
 
 export const PROVINCES: Province[] = [
   'WESTERN',
@@ -50,13 +50,13 @@ export function formatProvince(province: Province | null | undefined): string {
   // Older destination rows saved before provinces existed can come back without one.
   if (!province) return ''
   return province
-    .toLowerCase()
-    .split('_')
-    .map((word) => word[0].toUpperCase() + word.slice(1))
-    .join(' ')
+      .toLowerCase()
+      .split('_')
+      .map((word) => word[0].toUpperCase() + word.slice(1))
+      .join(' ')
 }
 
-// Matches the response of GET /api/reference-data/provinces
+ // Matches the response of GET /api/reference-data/provinces
 export type ProvinceDistrictMap = Record<Province, string[]>
 
 // Matches com.tourlk.dto.DestinationRequestDto
