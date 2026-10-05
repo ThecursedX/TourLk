@@ -22,17 +22,17 @@ export default function DestinationClosureBanner({ destination, compact = false 
 
   if (compact) {
     return (
-      <p className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-medium text-orange-800" role="status">
-        ⚠ {label}
-      </p>
+        <p className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-medium text-orange-800" role="status">
+          ⚠ {label}
+        </p>
     )
   }
 
   return (
-    <div className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-900" role="alert">
-      <p className="font-semibold">⚠ {label}.</p>
-      {destination.closureReason && <p className="mt-1">{destination.closureReason}</p>}
-      <p className="mt-1 text-orange-800">Please check before you plan a visit.</p>
-    </div>
+      <div className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-3 text-sm text-orange-900" role="alert">
+        <p className="font-semibold">⚠ {label}.</p>
+        {destination.closureReason && <p className="mt-1">{destination.closureReason}</p>}
+        <p className="mt-1 text-orange-800">Please check before you plan a visit.</p>
+      </div>
   )
 }
