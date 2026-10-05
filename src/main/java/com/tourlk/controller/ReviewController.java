@@ -31,10 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * Review creation/management for completed bookings, reservations and
- * hires, plus public browsing and rating summaries. Mirrors the Payment
- * module's conventions (one entity + type discriminator across multiple
- * reviewable things).
+ *Review creation/management for completed bookings, reservations and
+ *hires, plus public browsing and rating summaries. Mirrors the Payment
+ *module's conventions (one entity + type discriminator across multiple
+ *reviewable things).
  */
 @RestController
 @RequestMapping("/api/reviews")
